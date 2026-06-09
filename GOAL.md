@@ -121,6 +121,25 @@ Document this requirement in both ask-agent and ask-llm-providers GOAL.md files.
 - Add or update the relevant page(s) and submit a PR to ask-docs.
 - This is not optional — ask-docs is the public face of the ecosystem.
 
+## Improving Parent Gems During Development
+
+### Improving Parent Gems During Development
+
+If during development you discover something in a parent gem (a dependency of this gem)
+that needs to be fixed or improved:
+
+1. Make the change in the parent gem's repository at `/Users/kaka/Code/ask-rb/GEMNAME/`
+2. Ensure existing tests in the parent gem still pass: `cd ../PARENT && bundle exec rake test`
+3. Ensure tests in THIS gem still pass: `bundle exec rake test`
+4. Ensure the parent gem still builds: `gem build *.gemspec`
+5. Commit the parent gem change, bump its patch version, and push:
+   `cd ../PARENT && git commit -m "fix: ..." && git push`
+6. Update this gem's Gemfile to reference the updated parent gem
+7. Continue with this gem's implementation using the fixed parent
+
+Do NOT break parent functionality. Do NOT change parent APIs without testing
+both gems. Parent gems have their own consumers — treat them with care.
+
 ## Release Checklist (Required for v0.1.0)
 
 Before declaring this gem done and releasing v0.1.0, verify:
