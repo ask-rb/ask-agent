@@ -4,7 +4,7 @@ Gem::Specification.new do |spec|
   spec.name = "ask-agent"
   spec.version = Ask::Agent::VERSION
   spec.authors = ["Kaka Ruto"]
-  spec.email = ["kaka@anywaye.com"]
+  spec.email = ["kaka@myrrlabs.com"]
 
   spec.summary = "Agent runtime for the ask-rb ecosystem"
   spec.description = "Agent loop, session management, tool execution, context compaction, hooks, and extensions."
