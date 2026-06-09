@@ -88,6 +88,14 @@ Renamed from `ruby_llm-conductor` (which lives at `github.com/ask-rb/ruby_llm-co
 - `ruby_llm` dependency still in place but clearly marked as temporary
 - README has quick start, migration guide, full API docs
 
+## Documentation
+
+### Documentation
+- **Update ask-docs** after releasing v0.1.0 — the docs site at github.com/ask-rb/ask-docs must reflect this gems API, usage, and position in the ecosystem.
+- The ask-docs repo has a Jekyll site with sections for each gem under core/, providers/, tools/, agent/.
+- Add or update the relevant page(s) and submit a PR to ask-docs.
+- This is not optional — ask-docs is the public face of the ecosystem.
+
 ## Release Checklist (Required for v0.1.0)
 
 Before declaring this gem done and releasing v0.1.0, verify:
