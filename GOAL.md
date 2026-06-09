@@ -99,19 +99,6 @@ Document this requirement in both ask-agent and ask-llm-providers GOAL.md files.
 - Telemetry with sensible defaults that don't log sensitive data
 - Error recovery that doesn't retry critical errors (auth, permissions, payment required)
 
-## What "Done" Means
-
-- All conductor code ported to `Ask::Agent` namespace
-- Tests pass — all existing conductor tests work under new namespace
-- `Session#run` creates a full agent loop with tools from `ask-tools-shell`
-- Concurrent tool results stream to chat as each tool finishes
-- Persistence (in-memory + ActiveRecord) works
-- Hooks and extensions system works
-- Events fire correctly throughout the lifecycle
-- Compactor manages context window
-- >90% test coverage
-- `ruby_llm` dependency still in place but clearly marked as temporary
-- README has quick start, migration guide, full API docs
 
 ## Documentation
 
@@ -140,20 +127,6 @@ that needs to be fixed or improved:
 Do NOT break parent functionality. Do NOT change parent APIs without testing
 both gems. Parent gems have their own consumers — treat them with care.
 
-## Release Checklist (Required for v0.1.0)
-
-Before declaring this gem done and releasing v0.1.0, verify:
-
-- [] All tests pass with >90% coverage
-- [] Every public API method has documentation (yardoc or inline comments)
-- [] README is complete: installation, quick start, configuration, development
-- [] CHANGELOG.md exists with an entry for v0.1.0
-- [] All code is committed and pushed to github.com/ask-rb/ask-agent
-- [] Gem builds without errors: gem build *.gemspec
-- [] Gem is released on RubyGems
-- [] A consumer app can install, require, and use the gem with no errors
-- [] Thread-safety verified (registry, config, client construction)
-- [] Error messages are helpful and actionable
 
 ## What Done Means for v0.1.0
 
@@ -164,6 +137,59 @@ The gem reaches v0.1.0 when:
 - A consumer script can require it and use its full public API
 - The README provides enough information for someone unfamiliar to get started in 5 minutes
 - The CHANGELOG documents what v0.1.0 delivers
+
+
+## v0.1.0 Completion Checklist
+
+A gem is NOT done until every item in this checklist passes. No shortcuts. If you cannot check every box, the gem is NOT finished.
+
+### Code & Tests
+- [ ] Every public method has unit tests (happy path + edge cases + error cases)
+- [ ] Tests cover: normal operation, missing inputs, invalid inputs, network errors, auth failures
+- [ ] Integration tests with real recorded API calls using VCR cassettes (for any gem that calls external APIs)
+- [ ] All tests pass: `bundle exec rake test`
+- [ ] Test coverage >= 90% (measure with simplecov)
+- [ ] Thread-safety verified for any shared state (registries, config, client construction)
+- [ ] No warnings on load
+- [ ] No dependency conflicts
+
+### Documentation
+- [ ] README is complete: installation, quick start, configuration, examples, development
+- [ ] Every public method documented (yardoc or inline comments)
+- [ ] CHANGELOG.md exists with v0.1.0 entry
+
+### Release
+- [ ] Gem builds without errors: `gem build *.gemspec`
+- [ ] Gem is released on RubyGems.org: `gem push *.gem`
+- [ ] A fresh install works: `gem install GEMNAME` in a clean directory
+- [ ] A consumer script can require and use the full public API
+
+### Production Hardening
+- [ ] Error messages are helpful and actionable (tell the user what went wrong AND what to do)
+- [ ] Network timeouts handled (Timeout::Error, Errno::ECONNREFUSED, etc.)
+- [ ] Retry logic for transient failures (rate limits, 429, 503)
+- [ ] Sensible defaults for all configuration options
+- [ ] Input validation rejects invalid parameters with clear messages
+- [ ] Logging does not leak sensitive data (tokens, keys)
+
+### CI/CD
+- [ ] GitHub Actions workflow runs tests on push and PR (`.github/workflows/ci.yml`)
+- [ ] CI passes on Ruby 3.2, 3.3, 3.4
+
+### Post-Release
+- [ ] ask-docs repository updated with this gem documentation
+- [ ] Version tag exists: `git tag v0.1.0 && git push --tags`
+
+### Service-Specific
+- [ ] Full agent loop tested end-to-end (message -> tool call -> result -> follow-up)
+- [ ] Streaming events tested (all event types fire correctly)
+- [ ] Tool execution tested (parallel + sequential modes)
+- [ ] Compactor tested (token estimation, compaction, overflow recovery)
+- [ ] Hooks tested (before/after tool lifecycle)
+- [ ] Persistence tested (in-memory + ActiveRecord)
+- [ ] Extension system tested (register, hook lifecycle)
+- [ ] Safety extensions tested (PermissionGate, RateLimiter, AuditLog)
+- [ ] Error recovery tested (max turns, loop detection, context length exceeded, network errors)
 
 ## Development Workflow
 
