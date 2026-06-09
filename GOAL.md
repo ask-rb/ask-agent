@@ -140,6 +140,22 @@ Study existing implementations for patterns and conventions:
 - **General patterns** — study `pi/packages/ai/src/providers/` for lazy loading, registration, and protocol families
 - **Test patterns** — study `ruby_llm/spec/` for VCR cassette structure and integration testing patterns
 - **ask-github** — reference implementation for service context gems; follow its three-file pattern
+### Reference Repositories (Local)
+All ask-rb gem repos are available locally at /Users/kaka/Code/ask-rb/ for reference.
+Do not clone from GitHub — use the local directories:
+- Source code: /Users/kaka/Code/ask-rb/GEMNAME/lib/
+- Tests: /Users/kaka/Code/ask-rb/GEMNAME/test/
+- Goal: /Users/kaka/Code/ask-rb/GEMNAME/GOAL.md
+- Gemspec: /Users/kaka/Code/ask-rb/GEMNAME/GEMNAME.gemspec
+
+Other reference projects in the same workspace:
+- /Users/kaka/Code/ask-rb/ruby_llm/ — RubyLLM gem (providers, models, streaming)
+- /Users/kaka/Code/ask-rb/ruby_llm-conductor/ — Original conductor (agent loop, tools)
+- /Users/kaka/Code/ask-rb/llm-proxy/ — Protocol normalization patterns
+- /Users/kaka/Code/ask-rb/pi/ — Pi agent (TypeScript, provider architecture)
+- /Users/kaka/Code/ask-rb/solid_agents/ — Original solid_agents (Rails engine)
+- /Users/kaka/Code/ask-rb/composio/ — Composio SDK (MCP tool execution examples)
+- /Users/kaka/Code/ask-rb/ask-docs/ — Documentation site (update after release)
 
 ### Testing
 - Use Minitest (not RSpec) — consistent with the ask-rb ecosystem.
