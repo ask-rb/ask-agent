@@ -168,9 +168,11 @@ The gem reaches v0.1.0 when:
 ## Development Workflow
 
 ### Git conventions
+- The default branch is **master**. All work should be based on master unless a specific branch is requested.
+
 - Follow the git-workflow skill for branch naming, commit messages, and PR structure.
 - Use conventional commits: `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`.
-- One logical change per commit. No "fixup" or "wip" commits on main.
+- One logical change per commit. No "fixup" or "wip" commits on master.
 - Commit messages must be one direct sentence describing the change.
 
 ### Reference projects
