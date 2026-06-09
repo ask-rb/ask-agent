@@ -49,6 +49,31 @@ Renamed from `ruby_llm-conductor` (which lives at `github.com/ask-rb/ruby_llm-co
 - No `ask-auth` dependency (agents don't need auth directly — tools do)
 
 ### 7. Test coverage
+### 8. Build built-in safety extensions
+The following extensions ship with ask-agent as opt-in safety modules:
+
+**PermissionGate** — Require approval before destructive operations:
+- Hooks into `before_tool_call`
+- Configurable tool list: `:write`, `:edit`, `:bash`, `:destroy`, etc.
+- Configurable timeout (approval expires after N seconds)
+- Can block execution entirely or require confirmation
+
+**RateLimiter** — Prevent runaway tool calls:
+- `max_calls_per_minute` (default: 20)
+- `max_tool_calls_per_turn` (default: 5)
+- If exceeded, the agent is told to stop and reassess
+
+**AuditLog** — Immutable record of every tool call:
+- Append-only log to file or stdout
+- Records: timestamp, tool name, arguments, result, duration, session_id
+- No modification or deletion — pure append
+
+### 9. Port opencode providers
+The conductor currently registers `opencode` and `opencode_go` providers.
+These must be ported to ask-llm-providers when it is built.
+For now, the ask-agent temporary ruby_llm dependency handles them.
+Document this requirement in both ask-agent and ask-llm-providers GOAL.md files.
+
 - Port all existing conductor tests under new namespace
 - Update test references from `RubyLLM::Conductor::Tools::*` to `Ask::Tools::*`
 - Test `Session#run` creates agent loop, calls LLM, executes tools, returns response
