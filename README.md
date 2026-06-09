@@ -1,10 +1,8 @@
 # ask-agent
 
-The core agent loop: think → call tools → execute → feed back → repeat. Renamed from
-`ruby_llm-conductor`.
+Agent runtime for the ask-rb ecosystem. The core agent loop: think → call tools → execute → feed back → repeat.
 
-Provides `Ask::Agent::Session`, `Loop`, `ToolExecutor`, `Compactor`, `Hooks`, `Events`,
-and persistence. Works with any `Ask::Tool` subclass.
+Ported from `RubyLLM::Conductor` into the `Ask::Agent` namespace.
 
 ## Installation
 
@@ -12,30 +10,102 @@ and persistence. Works with any `Ask::Tool` subclass.
 gem "ask-agent"
 ```
 
-## Usage
+## Quick Start
 
 ```ruby
+require "ask-agent"
+
 session = Ask::Agent::Session.new(
   model: "gpt-4o",
-  tools: Ask::Tools::Shell.all
+  tools: [Ask::Tools::Shell::Bash, Ask::Tools::Shell::Read]
 )
 
-session.run("List all Ruby files in the project") do |event|
+response = session.run("What files are in the current directory?")
+puts response
+```
+
+## Components
+
+| Component | File | Purpose |
+|---|---|---|
+| `Ask::Agent::Session` | session.rb | Full agent loop — message → tool calls → results → follow-up |
+| `Ask::Agent::Loop` | loop.rb | Turn management, loop detection, max-turn guard |
+| `Ask::Agent::ToolExecutor` | tool_executor.rb | Parallel/sequential tool execution with retry and abort |
+| `Ask::Agent::Compactor` | compactor.rb | Context window management with proactive/overflow compaction |
+| `Ask::Agent::Hooks` | hooks.rb | Before/after tool lifecycle callbacks |
+| `Ask::Agent::Events` | events.rb | Data.define event types for streaming and monitoring |
+| `Ask::Agent::Telemetry` | telemetry.rb | File-backed telemetry for error tracking |
+| `Ask::Agent::Reflector` | reflector.rb | Assistant response self-evaluation |
+| `Ask::Agent::MetaAgent` | meta_agent.rb | LLM-powered self-improvement from telemetry |
+| `Ask::Agent::Configuration` | configuration.rb | Global config: model, turns, concurrency |
+
+## Events
+
+Stream session execution in real-time:
+
+```ruby
+session.on_event do |event|
   case event
-  in Ask::Agent::Event::Chunk(content:) then write(content)
-  in Ask::Agent::Event::ToolCalled(name:, arguments:) then log(name, arguments)
+  when Ask::Agent::Events::TextDelta
+    print event.content
+  when Ask::Agent::Events::ToolExecutionStart
+    puts "\nRunning #{event.name}..."
+  when Ask::Agent::Events::ToolExecutionEnd
+    puts "  → #{event.duration_ms}ms #{event.is_error ? 'error' : 'ok'}"
   end
 end
 ```
 
-## Migration from ruby_llm-conductor
+## Extensions
 
-See [MIGRATION.md](MIGRATION.md) for details on moving from `RubyLLM::Conductor`.
+Opt-in safety modules:
+
+- **PermissionGate** — Require approval for destructive tools (write, edit, bash, destroy)
+- **RateLimiter** — Prevent runaway tool calls (configurable per-minute and per-turn limits)
+- **AuditLog** — Immutable, append-only log of every tool call
+
+```ruby
+extensions = [
+  Ask::Agent::Extensions::PermissionGate.new,
+  Ask::Agent::Extensions::RateLimiter.new(max_calls_per_minute: 30),
+  Ask::Agent::Extensions::AuditLog.new(path: "agent.log")
+]
+
+session = Ask::Agent::Session.new(
+  model: "gpt-4o",
+  tools: [...],
+  hooks: {
+    before_tool: extensions.map(&:method(:before_tool_call)),
+    after_tool: extensions.select { |e| e.respond_to?(:after_tool_call) }.map(&:method(:after_tool_call))
+  }
+)
+```
+
+## Configuration
+
+```ruby
+Ask::Agent.configure do |c|
+  c.default_model = "claude-sonnet-4"
+  c.default_max_turns = 50
+  c.compactor_enabled = true
+  c.compactor_threshold = 0.8
+  c.parallel_tool_execution = true
+  c.max_tool_retries = 3
+end
+```
+
+## Persistence
+
+```ruby
+store = Ask::Agent::Persistence::InMemory.new
+session = Ask::Agent::Session.new(model: "gpt-4o", persistence: store)
+session.run("Hello")
+session.save  # persisted to store
+```
 
 ## Development
 
 ```bash
-bin/setup
 bundle exec rake test
 ```
 
