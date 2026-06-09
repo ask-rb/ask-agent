@@ -150,7 +150,7 @@ Before declaring this gem done and releasing v0.1.0, verify:
 - [] CHANGELOG.md exists with an entry for v0.1.0
 - [] All code is committed and pushed to github.com/ask-rb/ask-agent
 - [] Gem builds without errors: gem build *.gemspec
-- [] Gem is released as a private gem (see guides/RELEASING.md when available)
+- [] Gem is released on RubyGems
 - [] A consumer app can install, require, and use the gem with no errors
 - [] Thread-safety verified (registry, config, client construction)
 - [] Error messages are helpful and actionable
@@ -159,7 +159,7 @@ Before declaring this gem done and releasing v0.1.0, verify:
 
 The gem reaches v0.1.0 when:
 - All implementation steps above are complete and tested
-- The gem is released on GitHub Packages as a private gem
+- The gem is released on RubyGems
 - A real consumer can install it with gem install or Bundler
 - A consumer script can require it and use its full public API
 - The README provides enough information for someone unfamiliar to get started in 5 minutes
