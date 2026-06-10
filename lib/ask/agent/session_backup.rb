@@ -13,6 +13,9 @@ module Ask
         @reflector&.reflection_count || 0
       end
 
+
+      # @return [Ask::Skills::Registry, nil] auto-discovered skills registry
+      attr_reader :skills_registry
       attr_reader :meta_agent_results
       # @return [Ask::Skills::Registry, nil] auto-discovered skills registry
       attr_reader :skills_registry
@@ -39,6 +42,16 @@ module Ask
         @tools = resolve_tools(tools)
         @loop = Loop.new(max_turns: max_turns)
         @tool_executor = ToolExecutor.new(max_retries: max_tool_retries, parallel: parallel_tools)
+
+        # Auto-discover skills and inject into system prompt
+        @skills_registry = Ask::Skills.discover rescue nil
+        if @skills_registry && !@skills_registry.names.empty?
+          skill_text = @skills_registry.format_for_prompt
+          if !skill_text.empty? && @chat.messages.any? { |m| m.role == :system }
+            current = @chat.messages.find { |m| m.role == :system }.content.to_s
+            @chat.with_instructions(current + skill_text)
+          end
+        end
         @compactor = compactor ? build_compactor(compactor) : nil
         @hooks = Hooks.new(hooks)
 
@@ -64,6 +77,16 @@ module Ask
         @meta_agent_config = meta_agent
         @meta_agent_results = nil
 
+
+        # Auto-discover skills and inject into system prompt
+        @skills_registry = Ask::Skills.discover rescue nil
+        if @skills_registry && !@skills_registry.names.empty?
+          skill_text = @skills_registry.format_for_prompt
+          if !skill_text.empty? && @chat.messages.any? { |m| m.role == :system }
+            current = @chat.messages.find { |m| m.role == :system }.content.to_s
+            @chat.with_instructions(current + skill_text)
+          end
+        end
         @compactor&.chat = @chat
       end
 
@@ -212,113 +235,3 @@ module Ask
         @abort_requested = true
       end
 
-      def abort_requested? = @abort_requested
-
-      # Load a skill by name or file path.
-      # Injects the skill's full instructions into the conversation as a system message.
-      #
-      # @param name [String] skill name (e.g. "rails.db_debug") or path to a .md file
-      # @raise [Ask::Skills::Error] if the skill is not found
-      def skill(name)
-        if @skills_registry && (s = @skills_registry[name])
-          @chat.add_message(
-            role: :system,
-            content: "## Skill: #{s.name}\n\n#{s.description}\n\n---\n\n#{s.instructions}"
-          )
-        elsif File.exist?(name.to_s)
-          content = File.read(name.to_s)
-          @chat.add_message(
-            role: :system,
-            content: "## Skill: #{name}\n\n---\n\n#{content}"
-          )
-        else
-          raise Ask::Skills::Error, "Skill not found: #{name.inspect}"
-        end
-      end
-
-      def reset_messages!
-        @chat.reset_messages!
-        @messages = []
-      end
-
-      private
-
-      def build_chat(model, system_prompt, tools, **chat_options)
-        if model.respond_to?(:ask)
-          model
-        else
-          chat = Ask::Agent::Chat.new(model: model, tools: tools, **chat_options)
-          chat.with_instructions(system_prompt) if system_prompt
-          chat
-        end
-      end
-
-      def resolve_tools(tools)
-        tools.map do |tool|
-          tool.is_a?(Class) ? tool.new : tool
-        end
-      end
-
-      def build_compactor(config)
-        compactor = Compactor.new(
-          threshold: config[:threshold] || 0.8,
-          strategy: config[:strategy] || :proactive
-        )
-        compactor.chat = @chat
-        compactor
-      end
-
-      def persist!
-        @persistence.save(@id, {
-          id: @id,
-          messages: @chat.messages.map { |m|
-            {
-              role: m.role,
-              content: m.content.to_s,
-              tool_call_id: m.tool_call_id,
-              created_at: Time.now.iso8601
-            }
-          },
-          metadata: {
-            model: @chat.model.respond_to?(:id) ? @chat.model.id : @chat.model,
-            tools: @tools.map { |t| t.class.name },
-            max_turns: @max_turns,
-            turn_count: @turn_count,
-            created_at: @created_at.iso8601,
-            updated_at: Time.now.iso8601
-          }
-        })
-      end
-
-      def try_auto_meta_agent
-        return unless @meta_agent_config
-        return unless @meta_agent_config[:auto]
-
-        interval = @meta_agent_config[:interval] || 10
-        count = @telemetry.session_count
-        return unless count >= interval
-
-        agent = MetaAgent.new(
-          telemetry: @telemetry,
-          model: model_id_from(@chat),
-          **@meta_agent_config[:chat_options].to_h
-        )
-
-        results = agent.analyze
-        @meta_agent_results = results
-        emit(Events::MetaAgentAnalysis.new(results: results, count: results.size))
-        @telemetry.reset_session_count!
-      end
-
-      def model_id_from(chat)
-        chat.model.respond_to?(:id) ? chat.model.id : chat.model.to_s
-      end
-
-      def last_content
-        @chat.messages.reverse_each.lazy
-          .select { |m| m.role == :assistant && m.content.to_s.strip.length > 0 }
-          .first&.content.to_s
-      end
-    end
-  end
-end

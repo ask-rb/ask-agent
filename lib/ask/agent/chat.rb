@@ -26,8 +26,11 @@ module Ask
     # internal usage (Hash of { id => ToolCallInfo }).
     class Chat
       # @return [String] model ID (e.g. "gpt-4o")
-      attr_reader :model
-
+        attr_reader :model_id
+      # @return [String] model ID (e.g. "gpt-4o")
+      def model
+        @model_id
+      end
       # @return [Array<Ask::Message>] all messages in the conversation
       attr_reader :messages
 
@@ -35,13 +38,17 @@ module Ask
       # @param tools [Array<Ask::Tool>] tool instances available to the chat
       # @param temperature [Float, nil] sampling temperature
       # @param schema [Ask::Schema, Hash, nil] structured output schema
-      def initialize(model:, tools: [], temperature: nil, schema: nil, **)
+      # @param assume_model_exists [Boolean] whether to skip model catalog lookup
+      # @param provider [String, Symbol, nil] provider slug to use (overrides model catalog)
+      def initialize(model:, tools: [], temperature: nil, schema: nil,
+                     assume_model_exists: false, provider: nil, **)
         @model_id = model.respond_to?(:id) ? model.id : model.to_s
-        @model_info = resolve_model(@model_id)
+        @model_info = resolve_model(@model_id) unless assume_model_exists
         @tools = tools
         @temperature = temperature
         @schema = schema
         @messages = []
+        @provider_override = provider
         @provider = nil
       end
 
@@ -123,6 +130,15 @@ module Ask
         self
       end
 
+      # Set the structured output schema and return self.
+      #
+      # @param schema [Ask::Schema, Hash] structured output schema
+      # @return [self]
+      def with_schema(schema)
+        @schema = schema.respond_to?(:to_json_schema) ? schema.to_json_schema : schema
+        self
+      end
+
       # Clear all messages from the conversation.
       def reset_messages!
         @messages.clear
@@ -143,19 +159,19 @@ module Ask
       end
 
       def build_provider
-        slug = @model_info&.provider || "openai"
+        slug = @provider_override&.to_s || @model_info&.provider || "openai"
         klass = Ask::Provider.resolve(slug)
         klass.new(provider_config(slug))
       end
 
       def provider_config(slug, extra_keys: {})
-          env_key = "#{slug.upcase}_API_KEY"
-          key = ENV[env_key] || ENV["OPENCODE_API_KEY"] || ENV["OPENAI_API_KEY"]
-          base = ENV["#{slug.upcase}_API_BASE"] || ENV["OPENCODE_API_BASE"]
-          config = { api_key: key }
-          config[:"#{slug}_api_key"] = key
-          config[:"#{slug}_api_base"] = base if base
-          Ask::LLM::Config.new(config)
+        env_key = "#{slug.upcase}_API_KEY"
+        key = ENV[env_key] || ENV["OPENCODE_API_KEY"] || ENV["OPENAI_API_KEY"]
+        base = ENV["#{slug.upcase}_API_BASE"] || ENV["OPENCODE_API_BASE"]
+        config = { api_key: key }
+        config[:"#{slug}_api_key"] = key
+        config[:"#{slug}_api_base"] = base if base
+        Ask::LLM::Config.new(config)
       end
 
       # Accumulate partial tool calls from streaming chunks.

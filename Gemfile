@@ -4,6 +4,7 @@ gemspec
 
 gem "ask-tools", path: "../ask-tools"
 gem "ask-tools-shell", path: "../ask-tools-shell"
+gem "ask-skills", path: "../ask-skills"
 gem "ask-schema", path: "../ask-schema"
 gem "ostruct"
 

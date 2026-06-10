@@ -4,6 +4,7 @@ require "fileutils"
 require "json"
 require "securerandom"
 require "time"
+require "ask/skills"
 
 module Ask
   module Agent
