@@ -66,13 +66,13 @@ module Ask
         # Accumulator for tool calls during streaming (keyed by index)
         calls_acc = {}
 
-        result = provider.chat(@extra_params || {}, 
-          @messages.map(&:to_h),
+        result = provider.chat(          @messages.map(&:to_h),
           model: @model_id,
           tools: tool_defs,
           temperature: @temperature,
           stream: stream,
-          schema: @schema&.respond_to?(:to_json_schema) ? @schema.to_json_schema : @schema
+          schema: @schema&.respond_to?(:to_json_schema) ? @schema.to_json_schema : @schema,
+          **(@extra_params || {})
         ) do |raw_chunk|
           next unless block_given?
 
@@ -143,7 +143,10 @@ module Ask
     self
   end
 
-      def with_schema(schema)
+        # Set additional parameters forwarded to the provider call.
+  # @param params [Hash] extra keyword arguments for the provider
+  # @return [self]
+def with_schema(schema)
         @schema = schema.respond_to?(:to_json_schema) ? schema.to_json_schema : schema
         self
       end
