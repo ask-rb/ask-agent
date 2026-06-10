@@ -11,7 +11,7 @@ Renamed from `ruby_llm-conductor` (which lives at `github.com/ask-rb/ruby_llm-co
 - **Runtime:**
   - `ask-tools` (provides `Ask::Tool` base class, `Ask::Result`)
   - `ask-tools-shell` (provides execution tools — Bash, Code, etc.)
-  - `ruby_llm >= 1.14` (**temporary** — provides `RubyLLM::Chat`, providers, streaming. Will be replaced by `ask-core` + provider gems in Phase 3)
+  - `ask-core` `ask-llm-providers` (provides `Ask::Provider`, streaming)
 - **Build/test:** minitest, mocha, rake, vcr, webmock
 - **This gem MUST wait until `ask-tools` and `ask-tools-shell` are built, tested, and released.**
 
@@ -22,7 +22,7 @@ Renamed from `ruby_llm-conductor` (which lives at `github.com/ask-rb/ruby_llm-co
 - Rename module: `RubyLLM::Conductor` → `Ask::Agent`
 - Update all internal references
 - Do NOT copy `tools/` directory (tools live in `ask-tools-shell` now)
-- Do NOT copy `providers/` directory (kept in `ruby_llm` temporarily, moved later)
+- Do NOT copy `providers/` directory (handled by `ask-llm-providers`)
 - Keep: `session.rb`, `loop.rb`, `tool_executor.rb`, `compactor.rb`, `hooks.rb`, `events.rb`, `reflector.rb`, `telemetry.rb`, `meta_agent.rb`, `configuration.rb`, `tool_abort_controller.rb`
 - Keep: `persistence/base.rb`, `persistence/in_memory.rb`, `persistence/active_record.rb`
 
@@ -41,12 +41,13 @@ Renamed from `ruby_llm-conductor` (which lives at `github.com/ask-rb/ruby_llm-co
 - This replaces the current "collect all, then add batch" behavior
 
 ### 5. Update error handling
-- `retryable_error_name?` — keep current list, add `RubyLLM::ContextLengthExceededError` to retryable set
+- `retryable_error_name?` — keep current list, add `Ask::ContextLengthExceeded` to retryable set
 - Critical error detection — keep current CRITICAL_ERROR_CLASSES
 
 ### 6. Write `ask-agent.gemspec`
-- Dependencies: `ask-tools`, `ask-tools-shell`, `ruby_llm` (temporary)
+- Dependencies: `ask-core`, `ask-llm-providers`, `ask-tools`, `ask-tools-shell`
 - No `ask-auth` dependency (agents don't need auth directly — tools do)
+- **Migration complete:** `ruby_llm` dependency removed. `Ask::Agent::Chat` wraps `Ask::Provider` for LLM calls.
 
 ### 7. Test coverage
 ### 8. Build built-in safety extensions
@@ -69,10 +70,10 @@ The following extensions ship with ask-agent as opt-in safety modules:
 - No modification or deletion — pure append
 
 ### 9. Port opencode providers
-The conductor currently registers `opencode` and `opencode_go` providers.
-These must be ported to ask-llm-providers when it is built.
-For now, the ask-agent temporary ruby_llm dependency handles them.
-Document this requirement in both ask-agent and ask-llm-providers GOAL.md files.
+The conductor previously registered `opencode` and `opencode_go` providers through ruby_llm.
+These must be ported to ask-llm-providers if needed.
+
+
 
 - Port all existing conductor tests under new namespace
 - Update test references from `RubyLLM::Conductor::Tools::*` to `Ask::Tools::*`

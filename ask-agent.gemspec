@@ -16,10 +16,11 @@ Gem::Specification.new do |spec|
   spec.files = Dir["lib/**/*", "LICENSE", "README.md"]
   spec.require_paths = ["lib"]
 
+  spec.add_dependency "ask-core", "~> 0.1"
+  spec.add_dependency "ask-llm-providers", "~> 0.1"
   spec.add_dependency "ask-tools", "~> 0.1"
   spec.add_dependency "ask-tools-shell", "~> 0.1"
 
-  spec.add_development_dependency "ruby_llm", ">= 1.14"
   spec.add_development_dependency "minitest", "~> 5.25"
   spec.add_development_dependency "mocha", "~> 3.1"
   spec.add_development_dependency "rake", "~> 13.0"

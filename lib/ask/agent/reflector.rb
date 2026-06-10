@@ -66,12 +66,12 @@ module Ask
 
       def build_eval_chat
         model_id = model_id_from(@model)
-        RubyLLM::Chat.new(model: model_id)
+        Ask::Agent::Chat.new(model: model_id)
       end
 
       def model_id_from(model)
         case model
-        when RubyLLM::Chat then model.model.respond_to?(:id) ? model.model.id : model.model.to_s
+        when Ask::Agent::Chat then model.model.to_s
         when String then model
         else model.to_s
         end

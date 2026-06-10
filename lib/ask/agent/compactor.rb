@@ -138,8 +138,8 @@ module Ask
 
       def build_llm_chat
         if @llm.respond_to?(:ask) then @llm
-        elsif @llm.is_a?(String) then RubyLLM::Chat.new(model: @llm)
-        else RubyLLM::Chat.new end
+        elsif @llm.is_a?(String) then Ask::Agent::Chat.new(model: @llm)
+        else Ask::Agent::Chat.new(model: Ask::Agent.configuration.default_model) end
       end
 
       def extract_summary

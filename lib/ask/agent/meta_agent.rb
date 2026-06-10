@@ -100,7 +100,7 @@ module Ask
 
       def call_llm_for_analysis(telemetry_data, existing_recommendations, resolved_ids)
         prompt = build_analysis_prompt(telemetry_data, existing_recommendations, resolved_ids)
-        chat = RubyLLM::Chat.new(model: @model, **@chat_options)
+        chat = Ask::Agent::Chat.new(model: @model, **@chat_options)
         response = chat.ask(prompt)
         parse_llm_response(response.content.to_s)
       rescue => e

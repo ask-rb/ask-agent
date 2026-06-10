@@ -35,7 +35,6 @@ module Ask
 
         @chat = build_chat(model, system_prompt, tools, **chat_options)
         @tools = resolve_tools(tools)
-        register_tools_on_chat
         @loop = Loop.new(max_turns: max_turns)
         @tool_executor = ToolExecutor.new(max_retries: max_tool_retries, parallel: parallel_tools)
         @compactor = compactor ? build_compactor(compactor) : nil
@@ -96,7 +95,7 @@ module Ask
           emit(Events::LoopDetected.new(tool_name: e.message, repeated_count: 3))
           @telemetry.log(:loop_detected, session_id: @id, tool_name: e.message, repeated_count: 3)
           response = last_content
-        rescue RubyLLM::ContextLengthExceededError
+        rescue Ask::ContextLengthExceeded
           if @compactor && !@compactor.overflow_recovered?
             @compactor.recover_from_overflow
             retry
@@ -210,20 +209,11 @@ module Ask
 
       private
 
-      def register_tools_on_chat
-        return unless @tools.any?
-
-        def @chat.handle_tool_calls(response, &)
-          @on[:end_message]&.call(response) if @on[:end_message]
-          response
-        end
-      end
-
       def build_chat(model, system_prompt, tools, **chat_options)
         if model.respond_to?(:ask)
           model
         else
-          chat = RubyLLM::Chat.new(model: model, **chat_options)
+          chat = Ask::Agent::Chat.new(model: model, tools: tools, **chat_options)
           chat.with_instructions(system_prompt) if system_prompt
           chat
         end
