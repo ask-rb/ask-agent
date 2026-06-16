@@ -178,8 +178,7 @@ def with_schema(schema)
 
       def provider_config(slug)
         key = Ask::Auth.resolve(:"#{slug}_api_key") rescue nil
-        key ||= ENV["#{slug.upcase}_API_KEY"]
-        base = ENV["#{slug.upcase}_API_BASE"]
+        base = Ask::Auth.resolve(:"#{slug}_api_base") rescue nil
         config = { api_key: key }
         config[:"#{slug}_api_key"] = key
         config[:"#{slug}_api_base"] = base if base
