@@ -176,10 +176,10 @@ def with_schema(schema)
         klass.new(provider_config(slug))
       end
 
-      def provider_config(slug, extra_keys: {})
-        env_key = "#{slug.upcase}_API_KEY"
-        key = ENV[env_key] || ENV["OPENCODE_API_KEY"] || ENV["OPENAI_API_KEY"]
-        base = ENV["#{slug.upcase}_API_BASE"] || ENV["OPENCODE_API_BASE"]
+      def provider_config(slug)
+        key = Ask::Auth.resolve(:"#{slug}_api_key") rescue nil
+        key ||= ENV["#{slug.upcase}_API_KEY"]
+        base = ENV["#{slug.upcase}_API_BASE"]
         config = { api_key: key }
         config[:"#{slug}_api_key"] = key
         config[:"#{slug}_api_base"] = base if base
