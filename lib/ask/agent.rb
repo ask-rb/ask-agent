@@ -5,6 +5,7 @@ require "json"
 require "securerandom"
 require "time"
 require "ask/skills"
+require "ask-llm-providers"
 
 module Ask
   module Agent
