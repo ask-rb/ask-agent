@@ -19,3 +19,15 @@
 - Extensions: PermissionGate, RateLimiter, AuditLog
 - Persistence: Base, InMemory (ActiveRecord adapter deferred to ask-rails)
 - Dependencies: ask-tools, ask-tools-shell, ruby_llm (temporary)
+
+## 0.1.12 (2026-06-18)
+
+### Fixed
+
+- **`lib/ask/agent.rb` requires `ask-tools` directly** — `require "ask/agent"` loaded
+  `lib/ask/agent.rb` which required `ask-llm-providers` but NOT `ask-tools`. Users who
+  did `require "ask/agent"` (instead of `require "ask-agent"`) got `NameError:
+  uninitialized constant Ask::Tool` when using `Ask::Agent::Chat` (which references
+  `Ask::Tool` internally). Both entry points now require `ask-tools`:
+  `ask-agent.rb` (gem entry) already had it, `ask/agent.rb` (module entry) was
+  missing it.
