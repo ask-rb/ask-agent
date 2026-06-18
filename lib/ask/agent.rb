@@ -6,6 +6,7 @@ require "securerandom"
 require "time"
 require "ask/skills"
 require "ask-llm-providers"
+require "ask-tools"
 
 module Ask
   module Agent
