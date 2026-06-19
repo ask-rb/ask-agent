@@ -4,16 +4,17 @@ module Ask
   module Agent
     class Loop
       LOOP_DETECTION_WINDOW = 3
-      MAX_CONSECUTIVE_TOOL_TURNS = 6
+      @max_consecutive_tool_turns = 6
 
       attr_reader :turn_count
 
-      def initialize(max_turns: 25)
+      def initialize(max_turns: 25, max_consecutive_tool_turns: 6)
         @max_turns = max_turns
         @turn_count = 0
         @recent_results = []
         @loop_detected = false
         @consecutive_tool_turns = 0
+      @max_consecutive_tool_turns = max_consecutive_tool_turns
       end
 
       def run_turn(chat:, message:, tools:, tool_executor:, compactor:, hooks:, event_emitter:, session_id: nil)
