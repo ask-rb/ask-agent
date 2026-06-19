@@ -164,7 +164,7 @@ module Ask
         @max_retries.times do |attempt|
           return { result: nil, is_error: true, error: "Aborted" } if abort_controller&.aborted?
 
-          result = try_call(tool, args)
+          result = try_call(tool, args, abort_controller)
           return result unless result[:is_error] && retryable_error_name?(result[:error])
 
           sleep((2 ** attempt) * 0.5 + rand(0.0..0.5))
@@ -174,8 +174,8 @@ module Ask
         try_call(tool, args)
       end
 
-      def try_call(tool, args)
-        result = tool.call(args)
+      def try_call(tool, args, abort_controller = nil)
+        result = tool.call(args, abort_controller: abort_controller)
         { result: result, is_error: false }
       rescue => e
         { result: e.message, is_error: true, error: e.class.name }
@@ -190,7 +190,7 @@ module Ask
 
       def critical_error?(error_class_name)
         return false unless error_class_name
-        CRITICAL_ERROR_CLASSES.any? { |klass| error_class_name == klass.name }
+        CRITICAL_ERROR_CLASSES.any? { |klass| error_class_name == klass }
       end
 
       def aborted_result(tool_call)

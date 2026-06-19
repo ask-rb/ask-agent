@@ -12,4 +12,5 @@ require "ask/tools/shell"
 require "ask/agent"
 
 require "minitest/autorun"
+require "ostruct"
 require "mocha/minitest"

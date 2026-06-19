@@ -40,7 +40,7 @@ class FakeTool
   def name = "fake_tool"
   def description = "A fake tool"
   def parameters = {}
-  def call(args) = { result: "done", is_error: false }
+  def call(args, abort_controller: nil) = { result: "done", is_error: false }
   def params_schema = nil
   def provider_params = {}
 end
