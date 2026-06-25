@@ -60,7 +60,7 @@ module Ask
           raise LoopDetected, tool_results.last[:tool_name]
         end
 
-        if @consecutive_tool_turns >= MAX_CONSECUTIVE_TOOL_TURNS
+        if @consecutive_tool_turns >= @max_consecutive_tool_turns
           summary = tool_results.map { |r| r[:message].to_s.truncate(80) }.first(2).join("; ")
           return "Based on my investigation: #{summary}"
         end

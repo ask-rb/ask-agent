@@ -29,4 +29,43 @@ class ReflectorTest < Minitest::Test
     @reflector.reset!
     assert_equal 0, @reflector.reflection_count
   end
+
+  def test_model_id_from_string
+    id = @reflector.send(:model_id_from, "gpt-4o-mini")
+    assert_equal "gpt-4o-mini", id
+  end
+
+  def test_model_id_from_chat_object
+    chat = Ask::Agent::Chat.new(model: "claude-sonnet-4", assume_model_exists: true)
+    id = @reflector.send(:model_id_from, chat)
+    assert_equal "claude-sonnet-4", id
+  end
+
+  def test_model_id_from_unknown_uses_to_s
+    obj = Object.new
+    obj.define_singleton_method(:to_s) { "custom-model" }
+    id = @reflector.send(:model_id_from, obj)
+    assert_equal "custom-model", id
+  end
+
+  def test_parse_decision_deliver
+    decision = @reflector.send(:parse_decision, '{"decision": "deliver"}')
+    assert_equal :deliver, decision[:decision]
+  end
+
+  def test_parse_decision_improve
+    decision = @reflector.send(:parse_decision, '{"decision": "improve", "feedback": "add more detail"}')
+    assert_equal :improve, decision[:decision]
+    assert_equal "add more detail", decision[:feedback]
+  end
+
+  def test_parse_decision_malformed_json
+    decision = @reflector.send(:parse_decision, "not json")
+    assert_equal :deliver, decision[:decision]
+  end
+
+  def test_reflection_prompt_includes_response
+    prompt = @reflector.send(:reflection_prompt, "The answer is 42.")
+    assert_includes prompt, "The answer is 42."
+  end
 end
