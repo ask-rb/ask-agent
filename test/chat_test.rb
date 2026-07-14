@@ -7,7 +7,10 @@ class ChatTest < Minitest::Test
   include ProviderStubs
 
   def setup
-    @chat = Ask::Agent::Chat.new(model: "gpt-4o", assume_model_exists: true)
+    Ask::ModelCatalog.reset_instance!
+    Ask::ModelCatalog.instance.register(Ask::ModelInfo.new(id: "gpt-4o", provider: "openai"))
+    Ask::ModelCatalog.instance.register(Ask::ModelInfo.new(id: "claude-sonnet-4", provider: "anthropic"))
+    @chat = Ask::Agent::Chat.new(model: "gpt-4o")
   end
 
   def test_initialization
@@ -24,7 +27,7 @@ class ChatTest < Minitest::Test
   end
 
   def test_initialization_with_provider_override
-    chat = Ask::Agent::Chat.new(model: "gpt-4o", provider: "anthropic", assume_model_exists: true)
+    chat = Ask::Agent::Chat.new(model: "gpt-4o", provider: "anthropic")
     assert_equal "gpt-4o", chat.model_id
   end
 
@@ -235,13 +238,13 @@ class ChatTest < Minitest::Test
   private
 
   def with_fake_chat(model, tool_calls: nil)
-    chat = Ask::Agent::Chat.new(model: model, assume_model_exists: true)
+    chat = Ask::Agent::Chat.new(model: model)
     stub_chat_provider(chat, build_fake_provider(tool_calls: tool_calls))
     yield chat
   end
 
   def with_streaming_chat(model)
-    chat = Ask::Agent::Chat.new(model: model, assume_model_exists: true)
+    chat = Ask::Agent::Chat.new(model: model)
     stub_chat_provider(chat, build_streaming_provider)
     yield chat
   end

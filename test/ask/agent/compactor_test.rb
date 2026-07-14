@@ -38,13 +38,13 @@ class CompactorTest < Minitest::Test
   end
 
   def test_context_window_with_chat
-    chat = Ask::Agent::Chat.new(model: "gpt-4o", assume_model_exists: true)
+    chat = Ask::Agent::Chat.new(model: "gpt-4o")
     @compactor.chat = chat
     assert_equal 128_000, @compactor.context_window
   end
 
   def test_estimate_total_tokens_with_messages
-    chat = Ask::Agent::Chat.new(model: "gpt-4o", assume_model_exists: true)
+    chat = Ask::Agent::Chat.new(model: "gpt-4o")
     chat.add_message(role: :user, content: "Hello, world!")
     @compactor.chat = chat
     count = @compactor.estimate_total_tokens
@@ -52,7 +52,7 @@ class CompactorTest < Minitest::Test
   end
 
   def test_compact_requires_at_least_6_messages
-    chat = Ask::Agent::Chat.new(model: "gpt-4o", assume_model_exists: true)
+    chat = Ask::Agent::Chat.new(model: "gpt-4o")
     5.times { |i| chat.add_message(role: :user, content: "msg #{i}") }
     @compactor.chat = chat
     @compactor.compact!
@@ -60,7 +60,7 @@ class CompactorTest < Minitest::Test
   end
 
   def test_recover_from_overflow
-    chat = Ask::Agent::Chat.new(model: "gpt-4o", assume_model_exists: true)
+    chat = Ask::Agent::Chat.new(model: "gpt-4o")
     chat.add_message(role: :user, content: "Hello")
     @compactor.chat = chat
     @compactor.recover_from_overflow
@@ -68,7 +68,7 @@ class CompactorTest < Minitest::Test
   end
 
   def test_run_emits_events
-    chat = Ask::Agent::Chat.new(model: "gpt-4o", assume_model_exists: true)
+    chat = Ask::Agent::Chat.new(model: "gpt-4o")
     chat.add_message(role: :user, content: "Hi")
     @compactor.chat = chat
     @compactor.run
@@ -80,7 +80,7 @@ class CompactorTest < Minitest::Test
   end
 
   def test_should_compact_returns_false_below_threshold
-    chat = Ask::Agent::Chat.new(model: "gpt-4o", assume_model_exists: true)
+    chat = Ask::Agent::Chat.new(model: "gpt-4o")
     chat.add_message(role: :user, content: "Short")
     @compactor.chat = chat
     refute @compactor.should_compact?

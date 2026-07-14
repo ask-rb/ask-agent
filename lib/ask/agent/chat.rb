@@ -38,12 +38,10 @@ module Ask
       # @param tools [Array<Ask::Tool>] tool instances available to the chat
       # @param temperature [Float, nil] sampling temperature
       # @param schema [Ask::Schema, Hash, nil] structured output schema
-      # @param assume_model_exists [Boolean] whether to skip model catalog lookup
-      # @param provider [String, Symbol, nil] provider slug to use (overrides model catalog)
-      def initialize(model:, tools: [], temperature: nil, schema: nil,
-                     assume_model_exists: false, provider: nil, **)
+      # @param provider [String, Symbol, nil] provider slug (overrides catalog lookup)
+      def initialize(model:, tools: [], temperature: nil, schema: nil, provider: nil, **)
         @model_id = model.respond_to?(:id) ? model.id : model.to_s
-        @model_info = resolve_model(@model_id) unless assume_model_exists
+        @model_info = Ask::ModelCatalog.find(@model_id)
         @tools = tools
         @temperature = temperature
         @schema = schema
@@ -159,19 +157,13 @@ def with_schema(schema)
       private
 
       # Resolve model info from the catalog.
-      def resolve_model(model_id)
-        Ask::ModelCatalog.find(model_id)
-      rescue Ask::ModelNotFound
-        nil
-      end
-
       # Lazily resolve and instantiate the LLM provider.
       def provider
         @provider ||= build_provider
       end
 
       def build_provider
-        slug = @provider_override&.to_s || @model_info&.provider || "openai"
+        slug = @provider_override&.to_s || @model_info.provider
         klass = Ask::Provider.resolve(slug)
         klass.new(provider_config(slug))
       end

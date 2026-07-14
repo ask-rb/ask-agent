@@ -36,7 +36,7 @@ class ReflectorTest < Minitest::Test
   end
 
   def test_model_id_from_chat_object
-    chat = Ask::Agent::Chat.new(model: "claude-sonnet-4", assume_model_exists: true)
+    chat = Ask::Agent::Chat.new(model: "claude-sonnet-4")
     id = @reflector.send(:model_id_from, chat)
     assert_equal "claude-sonnet-4", id
   end

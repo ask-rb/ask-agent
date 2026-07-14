@@ -16,6 +16,7 @@ $LOAD_PATH.unshift File.expand_path("../../ask-schema/lib", __dir__)
 $LOAD_PATH.unshift File.expand_path("../../ask-skills/lib", __dir__)
 
 require "ask/version"
+require "ask/models"
 require "ask/tools/tool"
 require "ask/tools"
 require "ask/tools/shell"
@@ -25,6 +26,10 @@ require "ask/agent"
 require "minitest/autorun"
 require "ostruct"
 require "mocha/minitest"
+
+# Register test models so Chat can resolve them
+Ask::ModelCatalog.instance.register(Ask::ModelInfo.new(id: "gpt-4o", provider: "openai"))
+Ask::ModelCatalog.instance.register(Ask::ModelInfo.new(id: "claude-sonnet-4", provider: "anthropic"))
 
 module AgentTestHelpers
   # Create a mock chat-like object that responds like Ask::Agent::Chat
