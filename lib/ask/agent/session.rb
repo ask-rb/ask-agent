@@ -7,7 +7,7 @@ module Ask
   module Agent
     class Session
       attr_reader :id, :chat, :tools, :turn_count, :created_at, :messages
-      attr_reader :tool_calls_made
+      attr_reader :tool_calls_made, :total_input_tokens, :total_output_tokens, :total_cost
 
       def reflection_count
         @reflector&.reflection_count || 0
@@ -32,6 +32,10 @@ module Ask
         @turn_count = 0
         @created_at = Time.now
         @_no_tools_instructed = false
+
+        @total_input_tokens = 0
+        @total_output_tokens = 0
+        @total_cost = 0.0
 
         @telemetry = telemetry.is_a?(Telemetry) ? telemetry : Telemetry.new(enabled: !!telemetry)
 
@@ -99,6 +103,10 @@ module Ask
             event_emitter: self,
             session_id: @id
           )
+
+          @total_input_tokens += @loop.last_input_tokens.to_i
+          @total_output_tokens += @loop.last_output_tokens.to_i
+          @total_cost += @loop.last_cost.to_f
         rescue MaxTurnsExceeded => e
           emit(Events::MaxTurnsExceeded.new(max_turns: @max_turns))
           @telemetry.log(:max_turns_exceeded, session_id: @id, max_turns: @max_turns)
@@ -143,6 +151,10 @@ module Ask
               event_emitter: self,
               session_id: @id
             )
+
+            @total_input_tokens += @loop.last_input_tokens.to_i
+            @total_output_tokens += @loop.last_output_tokens.to_i
+            @total_cost += @loop.last_cost.to_f
           end
         end
 
@@ -151,7 +163,14 @@ module Ask
           try_auto_meta_agent
         end
 
-        emit(Events::SessionEnd.new(result: response, turn_count: @turn_count, tool_calls_made: @tool_calls_made))
+        emit(Events::SessionEnd.new(
+          result: response,
+          turn_count: @turn_count,
+          tool_calls_made: @tool_calls_made,
+          input_tokens: @total_input_tokens,
+          output_tokens: @total_output_tokens,
+          cost: @total_cost
+        ))
         @messages = @chat.messages.dup
 
         response

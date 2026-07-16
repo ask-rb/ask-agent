@@ -9,7 +9,7 @@ class EventsTest < Minitest::Test
   end
 
   def test_session_end_event
-    event = Ask::Agent::Events::SessionEnd.new(result: "done", turn_count: 5, tool_calls_made: 3)
+    event = Ask::Agent::Events::SessionEnd.new(result: "done", turn_count: 5, tool_calls_made: 3, input_tokens: nil, output_tokens: nil, cost: nil)
     assert_equal "done", event.result
     assert_equal 5, event.turn_count
     assert_equal 3, event.tool_calls_made
@@ -84,13 +84,13 @@ class EventsTest < Minitest::Test
 
   def test_turn_end_event
     results = [{ tool_name: "test", message: "done", status: "success" }]
-    event = Ask::Agent::Events::TurnEnd.new(tool_results: results, turn_number: 3)
+    event = Ask::Agent::Events::TurnEnd.new(tool_results: results, turn_number: 3, input_tokens: nil, output_tokens: nil, cost: nil)
     assert_equal results, event.tool_results
     assert_equal 3, event.turn_number
   end
 
   def test_turn_end_with_empty_results
-    event = Ask::Agent::Events::TurnEnd.new(tool_results: [], turn_number: 1)
+    event = Ask::Agent::Events::TurnEnd.new(tool_results: [], turn_number: 1, input_tokens: nil, output_tokens: nil, cost: nil)
     assert_empty event.tool_results
   end
 

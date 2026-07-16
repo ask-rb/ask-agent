@@ -38,7 +38,7 @@ module AgentTestHelpers
       model: model,
       model_id: model,
       messages: messages,
-      ask: Ask::Agent::ResponseMessage.new(content: "Mock response", tool_calls: {}, thinking: nil)
+      ask: Ask::Agent::ResponseMessage.new(content: "Mock response", tool_calls: {}, thinking: nil, input_tokens: nil, output_tokens: nil, cost: nil)
     )
     chat
   end

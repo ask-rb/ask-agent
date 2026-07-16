@@ -157,15 +157,15 @@ class LoopTest < Minitest::Test
         "call_1" => Ask::Agent::ToolCallInfo.new(id: "call_1", name: "test_tool", arguments: "{}")
       }
       chat.stubs(:ask).yields(
-        Ask::Agent::ChatChunk.new(content: "", tool_calls: tool_calls, thinking: nil)
+        Ask::Agent::ChatChunk.new(content: "", tool_calls: tool_calls, thinking: nil, input_tokens: nil, output_tokens: nil)
       ).returns(
-        Ask::Agent::ResponseMessage.new(content: "", tool_calls: tool_calls, thinking: nil)
+        Ask::Agent::ResponseMessage.new(content: "", tool_calls: tool_calls, thinking: nil, input_tokens: nil, output_tokens: nil, cost: nil)
       )
     elsif returns_text
       chat.stubs(:ask).yields(
-        Ask::Agent::ChatChunk.new(content: "Mock response", tool_calls: {}, thinking: nil)
+        Ask::Agent::ChatChunk.new(content: "Mock response", tool_calls: {}, thinking: nil, input_tokens: nil, output_tokens: nil)
       ).returns(
-        Ask::Agent::ResponseMessage.new(content: "Mock response", tool_calls: {}, thinking: nil)
+        Ask::Agent::ResponseMessage.new(content: "Mock response", tool_calls: {}, thinking: nil, input_tokens: nil, output_tokens: nil, cost: nil)
       )
     end
 

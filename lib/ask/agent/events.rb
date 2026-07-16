@@ -4,10 +4,10 @@ module Ask
   module Agent
     module Events
       SessionStart = Data.define
-      SessionEnd = Data.define(:result, :turn_count, :tool_calls_made)
+      SessionEnd = Data.define(:result, :turn_count, :tool_calls_made, :input_tokens, :output_tokens, :cost)
 
       TurnStart = Data.define
-      TurnEnd = Data.define(:tool_results, :turn_number)
+      TurnEnd = Data.define(:tool_results, :turn_number, :input_tokens, :output_tokens, :cost)
 
       MessageStart = Data.define
       TextDelta = Data.define(:content)

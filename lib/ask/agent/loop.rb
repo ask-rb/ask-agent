@@ -6,7 +6,7 @@ module Ask
       LOOP_DETECTION_WINDOW = 3
       @max_consecutive_tool_turns = 6
 
-      attr_reader :turn_count
+      attr_reader :turn_count, :last_input_tokens, :last_output_tokens, :last_cost
 
       def initialize(max_turns: 25, max_consecutive_tool_turns: 6)
         @max_turns = max_turns
@@ -35,6 +35,10 @@ module Ask
             end
           end
         end
+
+        @last_input_tokens = response.input_tokens
+        @last_output_tokens = response.output_tokens
+        @last_cost = response.cost
 
         event_emitter.emit(Events::MessageEnd.new(tool_calls: response.tool_call?))
         @turn_count += 1
@@ -65,7 +69,13 @@ module Ask
           return "Based on my investigation: #{summary}"
         end
 
-        event_emitter.emit(Events::TurnEnd.new(tool_results: tool_results, turn_number: @turn_count))
+        event_emitter.emit(Events::TurnEnd.new(
+          tool_results: tool_results,
+          turn_number: @turn_count,
+          input_tokens: @last_input_tokens,
+          output_tokens: @last_output_tokens,
+          cost: @last_cost
+        ))
 
         if compactor && compactor.should_compact?
           compactor.run(event_emitter: event_emitter)

@@ -3,42 +3,27 @@
 module Ask
   module Agent
     # Response message returned by {Chat#ask}.
-    # Presents a message-like response interface for ask-agent internal use.
-    ResponseMessage = Data.define(:content, :tool_calls, :thinking) do
+    # Includes token counts and cost when available from the provider.
+    ResponseMessage = Data.define(:content, :tool_calls, :thinking, :input_tokens, :output_tokens, :cost) do
       def tool_call? = !tool_calls.empty?
       def to_s = content.to_s
     end
 
-    # Tool call data used in {ResponseMessage} and {ChatChunk}.
     ToolCallInfo = Data.define(:id, :name, :arguments)
 
-    # Chunk yielded during streaming from {Chat#ask}.
-    ChatChunk = Data.define(:content, :tool_calls, :thinking) do
+    ChatChunk = Data.define(:content, :tool_calls, :thinking, :input_tokens, :output_tokens) do
       def tool_call? = !tool_calls.empty?
     end
 
-    # Thin wrapper around {Ask::Provider} + an internal message array that
-    # presents a Chat-like API for ask-agent internal use.
-    #
-    # Manages conversation history, resolves the correct provider/model,
-    # handles streaming chunk accumulation, and normalises tool call
-    # formats between Ask::Provider (Array of Hashes) and ask-agent
-    # internal usage (Hash of { id => ToolCallInfo }).
     class Chat
-      # @return [String] model ID (e.g. "gpt-4o")
-        attr_reader :model_id
-      # @return [String] model ID (e.g. "gpt-4o")
+      attr_reader :model_id
+
       def model
         @model_id
       end
-      # @return [Array<Ask::Message>] all messages in the conversation
+
       attr_reader :messages
 
-      # @param model [String, #ask] model ID or chat-like object
-      # @param tools [Array<Ask::Tool>] tool instances available to the chat
-      # @param temperature [Float, nil] sampling temperature
-      # @param schema [Ask::Schema, Hash, nil] structured output schema
-      # @param provider [String, Symbol, nil] provider slug (overrides catalog lookup)
       def initialize(model:, tools: [], temperature: nil, schema: nil, provider: nil, **)
         @model_id = model.respond_to?(:id) ? model.id : model.to_s
         @model_info = Ask::ModelCatalog.find(@model_id)
@@ -50,38 +35,39 @@ module Ask
         @provider = nil
       end
 
-      # Send a user message and get a completion response.
-      #
-      # @param message [String, nil] user message text
-      # @yield [ChatChunk] streaming chunks (only when a block is given)
-      # @return [ResponseMessage] the assistant's response
       def ask(message = nil, &block)
         @messages << Ask::Message.new(role: :user, content: message.to_s) if message
 
         stream = block_given?
         tool_defs = @tools.map { |t| Ask::ToolDef.from_tool(t) }
 
-        # Accumulator for tool calls during streaming (keyed by index)
         calls_acc = {}
 
-        result = provider.chat(          @messages.map(&:to_h),
-          model: @model_id,
-          tools: tool_defs,
-          temperature: @temperature,
+        provider_model = @model_id
+        provider_tools = tool_defs
+        provider_temp = @temperature
+        provider_schema = @schema&.respond_to?(:to_json_schema) ? @schema.to_json_schema : @schema
+        provider_params = @extra_params || {}
+
+        result = provider.chat(
+          @messages.map(&:to_h),
+          model: provider_model,
+          tools: provider_tools,
+          temperature: provider_temp,
           stream: stream,
-          schema: @schema&.respond_to?(:to_json_schema) ? @schema.to_json_schema : @schema,
-          **(@extra_params || {})
+          schema: provider_schema,
+          **provider_params
         ) do |raw_chunk|
           next unless block_given?
 
-          # Accumulate tool calls by index during streaming
           accumulate_tool_calls(raw_chunk, calls_acc)
 
-          # Yield adapted chunk with current tool call state
           yield ChatChunk.new(
             content: raw_chunk.content,
             tool_calls: build_current_tool_calls(calls_acc),
-            thinking: raw_chunk.respond_to?(:thinking) ? raw_chunk.thinking : nil
+            thinking: raw_chunk.respond_to?(:thinking) ? raw_chunk.thinking : nil,
+            input_tokens: nil,
+            output_tokens: nil
           )
         end
 
@@ -91,24 +77,24 @@ module Ask
           build_response(result)
         end
 
-        # Store assistant response in conversation history
         @messages << Ask::Message.new(
           role: :assistant,
           content: response_msg.content,
           tool_calls: response_msg.tool_calls&.values&.map { |tc|
             { id: tc.id, type: "function", name: tc.name, arguments: tc.arguments }
-          }
+          },
+          metadata: {
+            input_tokens: response_msg.input_tokens,
+            output_tokens: response_msg.output_tokens,
+            cost: response_msg.cost
+          }.compact
         )
+
+        emit_instrumentation(stream, response_msg)
 
         response_msg
       end
 
-      # Add a message to the conversation history.
-      #
-      # @param role [Symbol] :system, :user, :assistant, :tool
-      # @param content [String, nil] message content
-      # @param tool_call_id [String, nil] tool call ID (for tool results)
-      # @param tool_calls [Array<Hash>, nil] tool call invocations
       def add_message(role:, content: nil, tool_call_id: nil, tool_calls: nil)
         @messages << Ask::Message.new(
           role: role,
@@ -118,46 +104,28 @@ module Ask
         )
       end
 
-      # Set or replace the system prompt.
-      #
-      # @param prompt [String] system instructions
-      # @return [self]
       def with_instructions(prompt)
         @messages.reject! { |m| m.role == :system }
         @messages.unshift(Ask::Message.new(role: :system, content: prompt))
         self
       end
 
-      # Set the structured output schema and return self.
-      #
-      # @param schema [Ask::Schema, Hash] structured output schema
-      # @return [self]
-  # Set additional parameters for the provider call and return self.
-  #
-  # @param params [Hash] extra parameters passed to the provider
-  # @return [self]
-  def with_params(**params)
-    @extra_params = (@extra_params || {}).merge(params)
-    self
-  end
+      def with_params(**params)
+        @extra_params = (@extra_params || {}).merge(params)
+        self
+      end
 
-        # Set additional parameters forwarded to the provider call.
-  # @param params [Hash] extra keyword arguments for the provider
-  # @return [self]
-def with_schema(schema)
+      def with_schema(schema)
         @schema = schema.respond_to?(:to_json_schema) ? schema.to_json_schema : schema
         self
       end
 
-      # Clear all messages from the conversation.
       def reset_messages!
         @messages.clear
       end
 
       private
 
-      # Resolve model info from the catalog.
-      # Lazily resolve and instantiate the LLM provider.
       def provider
         @provider ||= build_provider
       end
@@ -177,7 +145,6 @@ def with_schema(schema)
         Ask::LLM::Config.new(config)
       end
 
-      # Accumulate partial tool calls from streaming chunks.
       def accumulate_tool_calls(raw_chunk, calls_acc)
         return unless raw_chunk.tool_call?
 
@@ -190,7 +157,6 @@ def with_schema(schema)
         end
       end
 
-      # Build current snapshot of tool calls from accumulator.
       def build_current_tool_calls(calls_acc)
         hash = {}
         calls_acc.each_value do |tc_data|
@@ -204,7 +170,6 @@ def with_schema(schema)
         hash
       end
 
-      # Convert Ask::Provider tool_calls (Array of Hashes) to Hash.
       def build_tool_call_hash(raw_calls)
         hash = {}
         raw_calls.each do |tc|
@@ -219,21 +184,76 @@ def with_schema(schema)
         hash
       end
 
-      # Build response from streaming result.
       def build_stream_response(stream, calls_acc)
-        thinking = stream.chunks.filter_map(&:thinking).last
+        tokens = accumulated_tokens(stream)
+        cost = calculate_cost(tokens[:input], tokens[:output])
         ResponseMessage.new(
           content: stream.accumulated_text,
           tool_calls: build_current_tool_calls(calls_acc),
-          thinking: thinking
+          thinking: stream.chunks.filter_map(&:thinking).last,
+          input_tokens: tokens[:input],
+          output_tokens: tokens[:output],
+          cost: cost
         )
       end
 
-      # Build response from non-streaming result.
       def build_response(msg)
         tool_calls = msg.tool_calls ? build_tool_call_hash(msg.tool_calls) : {}
         thinking = msg.respond_to?(:thinking) ? msg.thinking : nil
-        ResponseMessage.new(content: msg.content.to_s, tool_calls: tool_calls, thinking: thinking)
+        metadata = msg.metadata || {}
+        input_tokens = metadata[:input_tokens] || metadata["input_tokens"]
+        output_tokens = metadata[:output_tokens] || metadata["output_tokens"]
+        cost = calculate_cost(input_tokens, output_tokens)
+        ResponseMessage.new(
+          content: msg.content.to_s,
+          tool_calls: tool_calls,
+          thinking: thinking,
+          input_tokens: input_tokens,
+          output_tokens: output_tokens,
+          cost: cost
+        )
+      end
+
+      def accumulated_tokens(stream)
+        input = 0
+        output = 0
+        stream.chunks.each do |chunk|
+          if chunk.usage
+            input = chunk.usage[:input_tokens] || chunk.usage["input_tokens"] || input
+            output = chunk.usage[:output_tokens] || chunk.usage["output_tokens"] || output
+          end
+          output += 1 if chunk.content.to_s.length > 0
+        end
+        { input: input, output: output }
+      end
+
+      def calculate_cost(input_tokens, output_tokens)
+        return nil unless input_tokens || output_tokens
+        Ask::LLM::CostCalculator.calculate(@model_info, input_tokens: input_tokens || 0, output_tokens: output_tokens || 0)
+      rescue StandardError
+        nil
+      end
+
+      def emit_instrumentation(stream, response_msg)
+        return unless defined?(Ask::Instrumentation)
+
+        payload = {
+          model: @model_id,
+          provider: @model_info.provider,
+          input_tokens: response_msg.input_tokens,
+          output_tokens: response_msg.output_tokens,
+          cost: response_msg.cost,
+          tool_calls: response_msg.tool_call?,
+          stream: stream
+        }.compact
+
+        if stream
+          Ask::Instrumentation.instrument("chat.stream.ask", payload)
+        else
+          Ask::Instrumentation.instrument("chat.ask", payload)
+        end
+      rescue StandardError
+        nil
       end
     end
   end

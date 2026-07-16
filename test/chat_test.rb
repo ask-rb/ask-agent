@@ -188,7 +188,7 @@ class ChatTest < Minitest::Test
   end
 
   def test_response_message_basics
-    msg = Ask::Agent::ResponseMessage.new(content: "Hello", tool_calls: {}, thinking: nil)
+    msg = Ask::Agent::ResponseMessage.new(content: "Hello", tool_calls: {}, thinking: nil, input_tokens: nil, output_tokens: nil, cost: nil)
     assert_equal "Hello", msg.content
     refute msg.tool_call?
     assert_equal "Hello", msg.to_s
@@ -196,19 +196,19 @@ class ChatTest < Minitest::Test
 
   def test_response_message_with_tool_calls
     tc = { "call_1" => Ask::Agent::ToolCallInfo.new(id: "call_1", name: "get_weather", arguments: '{"city":"London"}') }
-    msg = Ask::Agent::ResponseMessage.new(content: "", tool_calls: tc, thinking: nil)
+    msg = Ask::Agent::ResponseMessage.new(content: "", tool_calls: tc, thinking: nil, input_tokens: nil, output_tokens: nil, cost: nil)
     assert msg.tool_call?
   end
 
   def test_chat_chunk_basics
-    chunk = Ask::Agent::ChatChunk.new(content: "Hello", tool_calls: {}, thinking: nil)
+    chunk = Ask::Agent::ChatChunk.new(content: "Hello", tool_calls: {}, thinking: nil, input_tokens: nil, output_tokens: nil)
     assert_equal "Hello", chunk.content
     refute chunk.tool_call?
   end
 
   def test_chat_chunk_with_tool_calls
     tc = { "call_1" => Ask::Agent::ToolCallInfo.new(id: "call_1", name: "get_weather", arguments: "") }
-    chunk = Ask::Agent::ChatChunk.new(content: "", tool_calls: tc, thinking: nil)
+    chunk = Ask::Agent::ChatChunk.new(content: "", tool_calls: tc, thinking: nil, input_tokens: nil, output_tokens: nil)
     assert chunk.tool_call?
   end
 
@@ -220,12 +220,12 @@ class ChatTest < Minitest::Test
   end
 
   def test_chunk_thinking
-    chunk = Ask::Agent::ChatChunk.new(content: "Visible", tool_calls: {}, thinking: "Hidden reasoning")
+    chunk = Ask::Agent::ChatChunk.new(content: "Visible", tool_calls: {}, thinking: "Hidden reasoning", input_tokens: nil, output_tokens: nil)
     assert_equal "Hidden reasoning", chunk.thinking
   end
 
   def test_response_message_thinking
-    msg = Ask::Agent::ResponseMessage.new(content: "Visible", tool_calls: {}, thinking: "Hidden")
+    msg = Ask::Agent::ResponseMessage.new(content: "Visible", tool_calls: {}, thinking: "Hidden", input_tokens: nil, output_tokens: nil, cost: nil)
     assert_equal "Hidden", msg.thinking
   end
 
