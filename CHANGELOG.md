@@ -1,3 +1,33 @@
+## [0.4.0] — 2026-07-17
+
+### Added
+
+- **Agent testing framework** — `Ask::Agent::Test` provides deterministic agent behavior tests without calling real LLMs. Stub tool calls and text responses, assert which tools were called, in what order, and verify the final response. No flaky tests, no API keys, no cost.
+
+  ```ruby
+  require "ask/agent/test"
+
+  class MyAgentTest < Minitest::Test
+    include Ask::Agent::Test::Assertions
+
+    def setup
+      @session = Ask::Agent::Session.new(model: "gpt-4o", tools: [my_tool])
+      @session.test_mode
+    end
+
+    def test_calls_search_tool
+      @session.stub_tool_call("search", query: "weather")
+      @session.stub_text("Sunny")
+      @session.run("What's the weather?")
+      assert_called_tool "search"
+      assert_final_response /Sunny/
+      assert_no_unused_stubs
+    end
+  end
+  ```
+
+  Assertions: `assert_called_tool`, `refute_called_tool`, `assert_tool_order`, `assert_final_response`, `assert_no_unused_stubs`.
+
 ## [0.3.1] — 2026-07-17
 
 ### Added

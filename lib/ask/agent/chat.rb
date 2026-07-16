@@ -51,7 +51,7 @@ module Ask
 
         result = chat_with_retry(stream, calls_acc, &block)
 
-        response_msg = if stream
+        response_msg = if result.respond_to?(:chunks)
           build_stream_response(result, calls_acc)
         else
           build_response(result)
@@ -104,10 +104,12 @@ module Ask
         @messages.clear
       end
 
+      attr_writer :test_provider
+
       private
 
       def provider
-        @provider ||= build_provider
+        @test_provider || @provider ||= build_provider
       end
 
       def build_provider
