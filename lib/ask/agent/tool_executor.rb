@@ -182,10 +182,15 @@ module Ask
       end
 
       def retryable_error_name?(error_name)
-        retryable = %w[Timeout::Error Errno::ETIMEDOUT
-                       Ask::RateLimitError Ask::ServerError
-                       Ask::RateLimitError Ask::ServiceUnavailableError]
-        retryable.include?(error_name)
+        return false unless error_name
+
+        klass = Object.const_get(error_name) rescue nil
+        return false unless klass
+
+        klass <= Ask::RateLimitError ||
+        klass <= Ask::ServerError ||
+        klass <= Ask::ServiceUnavailable ||
+        %w[Timeout::Error Errno::ETIMEDOUT].include?(error_name)
       end
 
       def critical_error?(error_class_name)

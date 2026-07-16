@@ -49,27 +49,7 @@ module Ask
         provider_schema = @schema&.respond_to?(:to_json_schema) ? @schema.to_json_schema : @schema
         provider_params = @extra_params || {}
 
-        result = provider.chat(
-          @messages.map(&:to_h),
-          model: provider_model,
-          tools: provider_tools,
-          temperature: provider_temp,
-          stream: stream,
-          schema: provider_schema,
-          **provider_params
-        ) do |raw_chunk|
-          next unless block_given?
-
-          accumulate_tool_calls(raw_chunk, calls_acc)
-
-          yield ChatChunk.new(
-            content: raw_chunk.content,
-            tool_calls: build_current_tool_calls(calls_acc),
-            thinking: raw_chunk.respond_to?(:thinking) ? raw_chunk.thinking : nil,
-            input_tokens: nil,
-            output_tokens: nil
-          )
-        end
+        result = chat_with_retry(stream, calls_acc, &block)
 
         response_msg = if stream
           build_stream_response(result, calls_acc)
@@ -232,6 +212,41 @@ module Ask
         Ask::LLM::CostCalculator.calculate(@model_info, input_tokens: input_tokens || 0, output_tokens: output_tokens || 0)
       rescue StandardError
         nil
+      end
+
+      MAX_CHAT_RETRIES = 3
+
+      def chat_with_retry(stream, calls_acc, &block)
+        MAX_CHAT_RETRIES.times do |attempt|
+          begin
+            return provider.chat(
+              @messages.map(&:to_h),
+              model: @model_id,
+              tools: @tools.map { |t| Ask::ToolDef.from_tool(t) },
+              temperature: @temperature,
+              stream: stream,
+              schema: @schema&.respond_to?(:to_json_schema) ? @schema.to_json_schema : @schema,
+              **(@extra_params || {})
+            ) do |raw_chunk|
+              next unless block
+
+              accumulate_tool_calls(raw_chunk, calls_acc)
+
+              block.call(ChatChunk.new(
+                content: raw_chunk.content,
+                tool_calls: build_current_tool_calls(calls_acc),
+                thinking: raw_chunk.respond_to?(:thinking) ? raw_chunk.thinking : nil,
+                input_tokens: nil,
+                output_tokens: nil
+              ))
+            end
+          rescue Ask::RateLimitError => e
+            raise if attempt >= MAX_CHAT_RETRIES - 1
+
+            delay = e.retry_after || ((2 ** attempt) + rand(0.0..1.0))
+            sleep(delay)
+          end
+        end
       end
 
       def emit_instrumentation(stream, response_msg)

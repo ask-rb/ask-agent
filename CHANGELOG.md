@@ -1,3 +1,13 @@
+## [0.3.1] — 2026-07-17
+
+### Added
+
+- **Rate-limit aware retry in Chat** — `Chat#ask` retries up to 3 times on `RateLimitError`, using `retry_after` from the error when available, otherwise exponential backoff with jitter.
+
+### Fixed
+
+- **`retryable_error_name?` in ToolExecutor** — fixed duplicate `Ask::RateLimitError` and non-existent `Ask::ServiceUnavailableError`. Now uses class hierarchy matching so subclasses are also retried. (Backport from LiteLLM error classification.)
+
 ## [0.3.0] — 2026-07-17
 
 ### Added
