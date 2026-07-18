@@ -1,3 +1,21 @@
+## [0.4.5] — 2026-07-18
+
+### Fixed
+
+- **`ToolExecutor#try_call` now respects `Ask::Result#ok?` for error detection** — Previously the method always set `is_error: false`, treating all Ask::Result returns as successful even when `ok?` was false. Tool failures returned via `Ask::Result.failure(...)` are now properly detected as errors, preventing the agent from silently ignoring failed tool executions and looping.
+
+## [0.4.4] — 2026-07-18
+
+### Added
+
+- **`ToolExecutor` detects `halted: true` from tool results and stops execution** — When a tool returns `Ask::Result.ok(metadata: { halted: true })`, the executor now detects this flag, aborts sibling tools in parallel mode, and stops sequential execution. Previously the `halted` metadata was set but never checked by the executor, causing the agent loop to continue calling tools after a tool signaled completion.
+
+## [0.4.3] — 2026-07-18
+
+### Added
+
+- **`Chat#provider_config` passes multiple credential names and path segments to `Ask::Auth.resolve`** — For compound provider slugs like `opencode_go`, the method now tries flat key names (`:opencode_go_api_key`, `:opencode_api_key`) and path segments (`[:opencode, :go, :api_key]`, `[:opencode, :api_key]`) as fallbacks. This lets `Ask::Auth.resolve` find credentials stored under various naming conventions.
+
 ## [0.4.0] — 2026-07-17
 
 ### Added

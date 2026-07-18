@@ -55,6 +55,10 @@ module Ask
               if result[:critical_failure]
                 sibling_abort.abort!
               end
+
+              if result[:halted]
+                sibling_abort.abort!
+              end
             rescue => e
               mutex.synchronize do
                 results[id] = {
@@ -79,6 +83,7 @@ module Ask
           result = execute_single_tool(tool_call, tools, hooks, event_emitter, sibling_abort)
           results << result
           break if result[:critical_failure]
+          break if result[:halted]
         end
         results
       end
@@ -128,6 +133,11 @@ module Ask
 
         is_error = result[:is_error] == true
         critical = is_error && critical_error?(result[:error])
+        halted = result[:halted] == true
+
+        if halted
+          abort_controller&.abort!
+        end
 
         if is_error && @telemetry
           @telemetry.log(:tool_error, session_id: @session_id, tool_name: tool_call.name, error_class: result[:error] || "RuntimeError", error_message: result[:result].to_s)
@@ -156,7 +166,8 @@ module Ask
           message: message,
           status: is_error ? "error" : "success",
           result: result,
-          critical_failure: critical
+          critical_failure: critical,
+          halted: halted
         }
       end
 
@@ -176,7 +187,12 @@ module Ask
 
       def try_call(tool, args, abort_controller = nil)
         result = tool.call(args, abort_controller: abort_controller)
-        { result: result, is_error: false }
+        is_error = result.respond_to?(:ok?) ? !result.ok? : false
+        hash = { result: result, is_error: is_error }
+        if result.respond_to?(:metadata) && result.metadata&.dig(:halted)
+          hash[:halted] = true
+        end
+        hash
       rescue => e
         { result: e.message, is_error: true, error: e.class.name }
       end

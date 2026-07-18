@@ -119,11 +119,27 @@ module Ask
       end
 
       def provider_config(slug)
-        key = Ask::Auth.resolve(:"#{slug}_api_key") rescue nil
-        base = Ask::Auth.resolve(:"#{slug}_api_base") rescue nil
+        # Try credential names from most to least specific:
+        #   1. Flat key with full slug (opencode_go_api_key)
+        #   2. Nested path with full slug ([:opencode, :go, :api_key])
+        #   3. Flat key with base slug  (opencode_api_key)
+        #   4. Nested path with base slug ([:opencode, :api_key])
+        slug_s = slug.to_s
+        base_s = slug_s.include?("_") ? slug_s.split("_").first : nil
+
+        cred_names = [:"#{slug_s}_api_key"]
+        cred_names << slug_s.split("_").map(&:to_sym).push(:api_key) if slug_s.include?("_")
+        if base_s
+          cred_names << :"#{base_s}_api_key"
+          cred_names << [base_s.to_sym, :api_key]
+        end
+
+        key = Ask::Auth.resolve(*cred_names) rescue nil
+
+        base_url = Ask::Auth.resolve(:"#{slug}_api_base") rescue nil
         config = { api_key: key }
         config[:"#{slug}_api_key"] = key
-        config[:"#{slug}_api_base"] = base if base
+        config[:"#{slug}_api_base"] = base_url if base_url
         Ask::LLM::Config.new(config)
       end
 

@@ -129,3 +129,70 @@ end
 class FakeEmitter
   def emit(event) = nil
 end
+
+# ── Halted tool support ──
+
+class FakeHaltTool
+  def name = "halt_tool"
+  def description = "A tool that halts"
+  def parameters = {}
+  def call(args, abort_controller: nil)
+    Ask::Result.ok(data: "halted", metadata: { halted: true })
+  end
+  def params_schema = nil
+  def provider_params = {}
+end
+
+class ToolExecutorHaltTest < Minitest::Test
+  def setup
+    @executor = Ask::Agent::ToolExecutor.new(max_retries: 1, parallel: false)
+    @halt_tool = FakeHaltTool.new
+    @pass_tool = FakeTool.new
+    @emitter = FakeEmitter.new
+    @hooks = Ask::Agent::Hooks.new
+  end
+
+  def test_halted_tool_stops_sequential_execution
+    calls = { "1" => tool_call("halt_tool"), "2" => tool_call("fake_tool") }
+    result = @executor.execute(calls, [@halt_tool, @pass_tool],
+      hooks: @hooks, event_emitter: @emitter)
+    assert_equal 1, result.length, "Only halted tool should execute"
+    assert result.first[:halted], "Halted flag should be set"
+  end
+
+  def test_non_halted_tool_does_not_set_halted
+    calls = { "1" => tool_call("fake_tool") }
+    result = @executor.execute(calls, [@pass_tool],
+      hooks: @hooks, event_emitter: @emitter)
+    assert result.first[:halted] != true, "Normal tool should not set halted"
+  end
+
+  def test_halted_tool_aborts_siblings_in_parallel
+    executor = Ask::Agent::ToolExecutor.new(max_retries: 1, parallel: true)
+    calls = {
+      "1" => tool_call("halt_tool", id: "1"),
+      "2" => tool_call("fake_tool", id: "2")
+    }
+    result = executor.execute(calls, [@halt_tool, @pass_tool],
+      hooks: @hooks, event_emitter: @emitter)
+    refute_empty result, "Should have results"
+  end
+
+  def test_raise_halt_sets_halted_metadata
+    tool = Class.new(Ask::Tool) do
+      description "Halt tool"
+      def execute
+        raise Ask::Tool::Halt.new("stopped here")
+      end
+    end
+    result = tool.new.call({})
+    assert result.ok?
+    assert result.metadata[:halted], "Halt exception should set halted metadata"
+  end
+
+  private
+
+  def tool_call(name, id: "call_1", arguments: "{}")
+    OpenStruct.new(name: name, id: id, arguments: arguments)
+  end
+end
