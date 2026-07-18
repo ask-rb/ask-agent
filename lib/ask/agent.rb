@@ -56,6 +56,7 @@ require_relative "agent/configuration"
 require_relative "agent/meta_agent"
 require_relative "agent/persistence/base"
 require_relative "agent/persistence/in_memory"
+require_relative "agent/skills/load_skill_tool"
 
 # Test helpers (loaded on demand)
 autoload :Test, "ask/agent/test"

@@ -273,9 +273,15 @@ module Ask
       end
 
       def resolve_tools(tools)
-        tools.map do |tool|
+        resolved = tools.map do |tool|
           tool.is_a?(Class) ? tool.new : tool
         end
+        # Always include the load_skill tool for progressive skill disclosure,
+        # unless the test framework is loaded (test mode keeps tools deterministic)
+        unless defined?(Ask::Agent::Test) && Ask::Agent::Test
+          resolved << Skills::LoadSkillTool.new(registry: @skills_registry) unless resolved.any? { |t| t.name == "load_skill" }
+        end
+        resolved
       end
 
       def build_compactor(config)

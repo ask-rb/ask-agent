@@ -213,6 +213,8 @@ class SessionTest < Minitest::Test
     Ask::Agent::Loop.any_instance.stubs(:run_turn).returns("response")
     s = Ask::Agent::Session.new(model: "gpt-4o", tools: [])
     s.run("hello")
+    # In the test environment, Ask::Agent::Test is loaded which disables
+    # the auto-added load_skill tool, so tools remain empty.
     assert s.instance_variable_get(:@_no_tools_instructed)
   end
 
