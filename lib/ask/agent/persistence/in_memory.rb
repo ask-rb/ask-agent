@@ -3,26 +3,11 @@
 module Ask
   module Agent
     module Persistence
+      # In-memory session persistence. Backed by {Ask::State::Memory}.
+      # Data is lost when the process exits.
       class InMemory < Base
         def initialize
-          @store = {}
-          @mutex = Mutex.new
-        end
-
-        def save(session_id, data)
-          @mutex.synchronize { @store[session_id] = data }
-        end
-
-        def load(session_id)
-          @mutex.synchronize { @store[session_id] }
-        end
-
-        def delete(session_id)
-          @mutex.synchronize { @store.delete(session_id) }
-        end
-
-        def list
-          @mutex.synchronize { @store.keys }
+          super(state_adapter: Ask::State::Memory.new)
         end
       end
     end

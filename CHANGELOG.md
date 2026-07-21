@@ -1,3 +1,11 @@
+## [0.6.1] — 2026-07-21
+
+### Changed
+
+- **`Persistence::Base` now wraps `Ask::State::Adapter`** (from ask-core 0.3.0). Session persistence is backed by the unified state interface instead of a standalone abstract class. `Persistence::InMemory` delegates to `Ask::State::Memory`. The public API is unchanged — `save`, `load`, `delete`, and `list` work identically.
+- **`Persistence::Base.new` accepts `state_adapter:` keyword** for custom backends. Defaults to `Ask::State::Memory` (same behavior as before).
+- **`Persistence::Base#list`** now returns a deduplicated list ordered by most-recently-saved.
+
 ## [0.6.0] — 2026-07-21
 
 ### Added
