@@ -1,3 +1,25 @@
+## [0.9.0] — 2026-07-21
+
+### Added
+
+- **Prompt caching support** — `prompt_caching` option enables provider-native prompt caching for significant cost savings on repeated conversation prefixes. Works with both Anthropic and OpenAI.
+
+  ```ruby
+  # Global config
+  Ask::Agent.configure do |c|
+    c.prompt_caching = true
+  end
+
+  # Or per-session
+  session = Ask::Agent::Session.new(model: "claude-sonnet-4", prompt_caching: true)
+  ```
+
+  **Anthropic**: Caches the system prompt and the last user message content. The provider automatically returns cached reads instead of processing the full context on repeated calls. Response metadata includes `cache_creation_input_tokens` and `cache_read_input_tokens`.
+
+  **OpenAI**: Caching is automatic for prompts exceeding 1024 tokens. Response metadata includes `cached_tokens` from `usage.prompt_tokens_details.cached_tokens`.
+
+- **Prompt caching capability** — Both `Ask::Providers::Anthropic` and `Ask::Providers::OpenAI` now advertise `prompt_caching: true` in their capabilities.
+
 ## [0.8.1] — 2026-07-21
 
 ### Added

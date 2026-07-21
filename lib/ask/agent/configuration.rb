@@ -19,6 +19,7 @@ module Ask
         @compactor_enabled = true
         @compactor_threshold = 0.8
         @parallel_tool_execution = true
+        @max_tool_retries = 3
         @prompt_caching = false
 
         @middleware = Middleware::Pipeline.new

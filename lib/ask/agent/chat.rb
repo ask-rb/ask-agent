@@ -33,7 +33,7 @@ module Ask
 
       attr_writer :test_provider
 
-      def initialize(model:, tools: [], temperature: nil, schema: nil, provider: nil, **)
+      def initialize(model:, tools: [], temperature: nil, schema: nil, provider: nil, prompt_caching: nil, **)
         @model_id = model.respond_to?(:id) ? model.id : model.to_s
         @model_info = Ask::ModelCatalog.find(@model_id)
         @tools = tools
@@ -43,10 +43,11 @@ module Ask
         @provider_override = provider
         @provider = nil
 
-        # Read configured middleware and stream transforms from global config
+        # Read configured middleware, transforms, and caching from global config
         config = Ask::Agent.configuration
         @middleware_pipeline = config.middleware.configured? ? config.middleware : nil
         @transform_pipeline = config.stream_transforms.configured? ? config.stream_transforms : nil
+        @prompt_caching = prompt_caching.nil? ? config.prompt_caching : prompt_caching
       end
 
       def ask(message = nil, &block)
@@ -142,6 +143,9 @@ module Ask
       # Build the request hash for the provider call.
       # Middleware can mutate this hash to inject defaults, modify params, etc.
       def build_request(stream)
+        extra = (@extra_params || {}).dup
+        extra[:prompt_caching] = true if @prompt_caching
+
         {
           messages: @messages.map(&:to_h),
           model: @model_id,
@@ -149,7 +153,7 @@ module Ask
           temperature: @temperature,
           stream: stream,
           schema: @schema&.respond_to?(:to_json_schema) ? @schema.to_json_schema : @schema,
-          extra_params: (@extra_params || {}).dup
+          extra_params: extra
         }
       end
 
