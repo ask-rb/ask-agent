@@ -150,20 +150,25 @@ class PromptCachingTest < Minitest::Test
   end
 
   def test_chat_without_prompt_caching
-    chat = Ask::Agent::Chat.new(model: "gpt-4o")
+    chat = Ask::Agent::Chat.new(model: "gpt-4o", prompt_caching: false)
     req = chat.send(:build_request, false)
 
     assert_nil req[:extra_params][:prompt_caching]
   end
 
-  def test_global_config_prompt_caching
+  def test_global_config_prompt_caching_defaults_to_true
+    config = Ask::Agent::Configuration.new
+    assert config.prompt_caching
+  end
+
+  def test_global_config_prompt_caching_disabled
     Ask::Agent.configuration.prompt_caching = true
     chat = Ask::Agent::Chat.new(model: "gpt-4o")
     req = chat.send(:build_request, false)
 
     assert req[:extra_params][:prompt_caching]
   ensure
-    Ask::Agent.configuration.prompt_caching = false
+    Ask::Agent.configuration.prompt_caching = true
   end
 
   def test_session_passes_prompt_caching

@@ -20,7 +20,7 @@ module Ask
         @compactor_threshold = 0.8
         @parallel_tool_execution = true
         @max_tool_retries = 3
-        @prompt_caching = false
+        @prompt_caching = true
 
         @middleware = Middleware::Pipeline.new
         @stream_transforms = StreamTransforms::Pipeline.new
