@@ -43,34 +43,56 @@ module Ask
         event_emitter.emit(Events::MessageEnd.new(tool_calls: response.tool_call?))
         @turn_count += 1
 
-        unless response.tool_call?
+        # Check if there are any tool calls (user-executed or provider-executed)
+        has_tool_calls = response.tool_call? || (response.tool_results&.any? == true)
+
+        unless has_tool_calls
           @consecutive_tool_turns = 0
           return response.content.to_s
         end
 
         @consecutive_tool_turns += 1
 
-        # Execute tools with concurrent result streaming
-        tool_results = tool_executor.execute_parallel(
-          response.tool_calls, tools, hooks, event_emitter, ToolAbortController.new
-        ) do |tool_call_id, result|
-          # Add each tool result as it completes (concurrent streaming)
-          tc = response.tool_calls[tool_call_id]
-          chat.add_message(role: :tool, content: result[:message].to_s, tool_call_id: tool_call_id) if tc
+        provider_results = response.tool_results || {}
+        all_tool_results = []
+
+        # Add provider-executed tool results directly to conversation
+        provider_results.each do |id, result|
+          chat.add_message(role: :tool, content: result[:message].to_s, tool_call_id: id)
+          all_tool_results << {
+            tool_name: result[:tool_name] || id,
+            message: result[:message].to_s,
+            status: result[:status] || "success",
+            provider_executed: true
+          }
+        end
+
+        # Determine which tool calls still need local execution
+        user_tool_calls = response.tool_calls.reject { |id, _| provider_results.key?(id) }
+
+        if user_tool_calls.any?
+          # Execute user tool calls locally
+          user_results = tool_executor.execute_parallel(
+            user_tool_calls, tools, hooks, event_emitter, ToolAbortController.new
+          ) do |tool_call_id, result|
+            tc = user_tool_calls[tool_call_id]
+            chat.add_message(role: :tool, content: result[:message].to_s, tool_call_id: tool_call_id) if tc
+          end
+          all_tool_results.concat(user_results)
         end
 
         # Check loop detection
-        if loop_detected?(tool_results)
-          raise LoopDetected, tool_results.last[:tool_name]
+        if loop_detected?(all_tool_results)
+          raise LoopDetected, all_tool_results.last[:tool_name]
         end
 
         if @consecutive_tool_turns >= @max_consecutive_tool_turns
-          summary = tool_results.map { |r| r[:message].to_s.truncate(80) }.first(2).join("; ")
+          summary = all_tool_results.map { |r| r[:message].to_s.truncate(80) }.first(2).join("; ")
           return "Based on my investigation: #{summary}"
         end
 
         event_emitter.emit(Events::TurnEnd.new(
-          tool_results: tool_results,
+          tool_results: all_tool_results,
           turn_number: @turn_count,
           input_tokens: @last_input_tokens,
           output_tokens: @last_output_tokens,

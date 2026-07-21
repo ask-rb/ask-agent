@@ -4,7 +4,14 @@ module Ask
   module Agent
     # Response message returned by {Chat#ask}.
     # Includes token counts and cost when available from the provider.
-    ResponseMessage = Data.define(:content, :tool_calls, :thinking, :input_tokens, :output_tokens, :cost) do
+    # +tool_calls+ are calls that need local execution.
+    # +tool_results+ are pre-computed results from provider-executed tools.
+    ResponseMessage = Data.define(:content, :tool_calls, :tool_results, :thinking, :input_tokens, :output_tokens, :cost) do
+      def initialize(content:, tool_calls: {}, tool_results: {}, thinking: nil, input_tokens: nil, output_tokens: nil, cost: nil)
+        super(content: content, tool_calls: tool_calls, tool_results: tool_results, thinking: thinking,
+              input_tokens: input_tokens, output_tokens: output_tokens, cost: cost)
+      end
+
       def tool_call? = !tool_calls.empty?
       def to_s = content.to_s
     end
@@ -286,6 +293,7 @@ module Ask
         ResponseMessage.new(
           content: stream.accumulated_text,
           tool_calls: build_current_tool_calls(calls_acc),
+          tool_results: {},
           thinking: stream.chunks.filter_map(&:thinking).last,
           input_tokens: tokens[:input],
           output_tokens: tokens[:output],
@@ -300,9 +308,11 @@ module Ask
         input_tokens = metadata[:input_tokens] || metadata["input_tokens"]
         output_tokens = metadata[:output_tokens] || metadata["output_tokens"]
         cost = calculate_cost(input_tokens, output_tokens)
+        tool_results = metadata[:provider_results] || metadata["provider_results"] || {}
         ResponseMessage.new(
           content: msg.content.to_s,
           tool_calls: tool_calls,
+          tool_results: tool_results,
           thinking: thinking,
           input_tokens: input_tokens,
           output_tokens: output_tokens,

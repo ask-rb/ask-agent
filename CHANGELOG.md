@@ -1,3 +1,26 @@
+## [0.8.0] — 2026-07-21
+
+### Added
+
+- **Provider-executed tool support in the agent loop** — `ResponseMessage` now carries a `tool_results` field for pre-computed results from provider-executed tools (e.g. OpenAI web search, file search, code interpreter). The `Loop` detects these results, adds them directly to the conversation without local execution, then proceeds with any remaining user tool calls.
+
+  ```ruby
+  agent = Ask::Agent.new("health_check")
+  agent.run("Search the web for server status")
+  # web_search runs on OpenAI's side; results come back pre-computed
+  ```
+
+### Changed
+
+- **`ResponseMessage`** added `tool_results` field (default `{}`). All existing call sites are compatible via keyword argument defaults.
+- **`Loop#run_turn`** — separates provider-executed results from user tool calls. Provider results are added to the conversation immediately. User tool calls continue to be executed locally via `ToolExecutor`.
+- **OpenAI provider** — `split_tools` separates `Ask::ProviderTool` objects from regular tools. `format_responses_tools` converts provider tools to the Responses API format. When provider tools are present, the Responses API endpoint is used instead of Chat Completions.
+
+### Tested
+
+- 13 new integration tests: loop handling with mixed tool types, provider-only tools, tool splitting, Responses API formatting.
+- Full suite: 329 tests, 592 assertions — 0 failures.
+
 ## [0.7.0] — 2026-07-21
 
 ### Added
