@@ -145,6 +145,9 @@ module Ask
         config = klass._config
         session_opts = { model: config[:model] || Ask::Agent.configuration.default_model }
 
+        # Pass agent directory for per-agent skills discovery
+        session_opts[:agent_dir] = dir
+
         # Resolve tools
         tools = resolve_definition_tools(config[:tools], dir)
         session_opts[:tools] = tools if tools.any?

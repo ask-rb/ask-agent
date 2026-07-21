@@ -1,3 +1,16 @@
+## [0.8.1] — 2026-07-21
+
+### Added
+
+- **Per-agent skills via `agent_dir:`** — `Session` now accepts `agent_dir:` parameter. When set, `Ask::Skills.discover(agent_dir:)` discovers skills scoped to that agent directory, loading them alongside shared skills.
+
+- **Agent definitions pass `agent_dir` automatically** — `Ask::Agent.new("name")` passes the agent's directory path to `Session`, enabling per-agent skill discovery without any configuration.
+
+### Changed
+
+- `Ask::Agent::Session#initialize` now accepts optional `agent_dir:` keyword.
+- Skills discovery in Session uses `Ask::Skills.discover(agent_dir: @agent_dir)` instead of the plain `Ask::Skills.discover`, enabling the new per-agent and shared skills paths from ask-skills 0.3.0.
+
 ## [0.8.0] — 2026-07-21
 
 ### Added

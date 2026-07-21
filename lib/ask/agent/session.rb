@@ -20,8 +20,10 @@ module Ask
       def initialize(model:, tools: [], max_turns: 25, max_tool_retries: 3,
                      compactor: nil, hooks: {}, persistence: nil,
                      id: nil, system_prompt: nil, parallel_tools: true,
-                     reflector: nil, telemetry: true, meta_agent: nil, **chat_options)
+                     reflector: nil, telemetry: true, meta_agent: nil,
+                     agent_dir: nil, **chat_options)
         @id = id || SecureRandom.uuid
+        @agent_dir = agent_dir
         @max_turns = max_turns
         @max_tool_retries = max_tool_retries
         @parallel_tools = parallel_tools
@@ -46,8 +48,8 @@ module Ask
         @compactor = compactor ? build_compactor(compactor) : nil
         @hooks = Hooks.new(hooks)
 
-        # Auto-discover skills and inject into system prompt
-        @skills_registry = Ask::Skills.discover rescue nil
+        # Auto-discover skills (shared + per-agent if agent_dir is given)
+        @skills_registry = Ask::Skills.discover(agent_dir: @agent_dir) rescue nil
         if @skills_registry && !@skills_registry.names.empty?
           skill_text = @skills_registry.format_for_prompt
           if !skill_text.empty? && @chat.messages.any? { |m| m.role == :system }

@@ -4,7 +4,8 @@ module Ask
   module Agent
     class Configuration
       attr_accessor :default_model, :default_max_turns, :compactor_enabled,
-                    :compactor_threshold, :parallel_tool_execution, :max_tool_retries
+                    :compactor_threshold, :parallel_tool_execution, :max_tool_retries,
+                    :prompt_caching
 
       # @return [Middleware::Pipeline] the middleware pipeline for provider calls
       attr_reader :middleware
@@ -18,7 +19,7 @@ module Ask
         @compactor_enabled = true
         @compactor_threshold = 0.8
         @parallel_tool_execution = true
-        @max_tool_retries = 3
+        @prompt_caching = false
 
         @middleware = Middleware::Pipeline.new
         @stream_transforms = StreamTransforms::Pipeline.new
