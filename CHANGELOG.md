@@ -1,3 +1,67 @@
+## [0.5.0] — 2026-07-21
+
+### Added
+
+- **Middleware pipeline for LLM provider calls** — `Ask::Agent::Middleware::Pipeline` lets you wrap every `provider.chat(...)` call with cross-cutting behavior. Configured globally and automatically used by all `Chat` and `Session` instances.
+
+  ```ruby
+  Ask::Agent.configure do |c|
+    c.middleware.use :retry_on_failure, max_retries: 5
+    c.middleware.use :log_calls, logger: Rails.logger
+    c.middleware.use :default_settings, temperature: 0.7
+  end
+  ```
+
+  Three built-in middlewares:
+  - **`RetryOnFailure`** — Exponential backoff retry on `RateLimitError`, `ServerError`, and `ServiceUnavailable`. Does not retry on fatal errors (`Unauthorized`, `ModelNotFound`, `ConfigurationError`). Respects `retry_after` from provider responses.
+  - **`LogCalls`** — Logs every LLM call with model, tool count, message count, duration, and token usage. Custom logger support (defaults to `$stdout`).
+  - **`DefaultSettings`** — Injects default generation parameters (`temperature`, `max_tokens`, `top_p`, etc.) into the provider call request.
+
+  Custom middlewares extend `Ask::Agent::Middleware::Base` and override `#around_request`:
+
+  ```ruby
+  class MyMiddleware < Ask::Agent::Middleware::Base
+    def around_request(provider, request)
+      Rails.logger.info "Calling #{request[:model]}"
+      yield
+    end
+  end
+
+  Ask::Agent.configure { |c| c.middleware.use MyMiddleware }
+  ```
+
+- **Stream transform pipeline** — `Ask::Agent::StreamTransforms::Pipeline` processes each raw `Ask::Chunk` through a chain of transforms before yielding `ChatChunks` to the caller. Configured globally.
+
+  ```ruby
+  Ask::Agent.configure do |c|
+    c.stream_transforms.use :thinking_separator
+    c.stream_transforms.use :text_buffer, min_size: 100
+  end
+  ```
+
+  Three built-in transforms:
+  - **`ThinkingSeparator`** — Splits chunks that contain both `thinking` and visible `content` into two separate chunks, so you can handle thinking tokens independently.
+  - **`TextBuffer`** — Coalesces rapid text deltas into larger contiguous chunks (minimum configurable size). Reduces UI updates and log entries. Automatically flushes before non-content chunks and when the stream finishes.
+  - **`ExtractJson`** — Accumulates the streaming response and attempts to parse it as JSON. Provides `#extracted_json` and `#json?` accessors for post-stream inspection.
+
+  Custom transforms extend `Ask::Agent::StreamTransforms::Base` and override `#call`:
+
+  ```ruby
+  class FilterTransform < Ask::Agent::StreamTransforms::Base
+    def call(chunk, &block)
+      block.call(chunk) unless chunk.content == "drop_me"
+    end
+  end
+
+  Ask::Agent.configure { |c| c.stream_transforms.use FilterTransform }
+  ```
+
+### Changed
+
+- **`Ask::Agent::Configuration`** now exposes `#middleware` and `#stream_transforms` pipelines. Both are pre-initialized as empty pipelines — no breaking changes for existing users.
+- **`Ask::Agent::Chat`** reads middleware and stream transforms from global configuration on initialization. If configured, all provider calls go through the middleware chain and all stream chunks through the transform chain.
+- **Test helper** now includes local `ask-core`, `ask-auth`, `ask-instrumentation`, and `ask-llm-providers` in the load path so tests run against development code rather than installed gems.
+
 ## [0.4.5] — 2026-07-18
 
 ### Fixed

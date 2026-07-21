@@ -10,11 +10,16 @@ end
 # frozen_string_literal: true
 
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
+$LOAD_PATH.unshift File.expand_path("../../ask-core/lib", __dir__)
+$LOAD_PATH.unshift File.expand_path("../../ask-auth/lib", __dir__)
+$LOAD_PATH.unshift File.expand_path("../../ask-instrumentation/lib", __dir__)
 $LOAD_PATH.unshift File.expand_path("../../ask-tools/lib", __dir__)
 $LOAD_PATH.unshift File.expand_path("../../ask-tools-shell/lib", __dir__)
 $LOAD_PATH.unshift File.expand_path("../../ask-schema/lib", __dir__)
 $LOAD_PATH.unshift File.expand_path("../../ask-skills/lib", __dir__)
+$LOAD_PATH.unshift File.expand_path("../../ask-llm-providers/lib", __dir__)
 
+require "ask/errors"
 require "ask/version"
 require "ask/models"
 require "ask/tools/tool"

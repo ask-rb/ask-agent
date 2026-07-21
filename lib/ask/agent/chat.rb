@@ -24,6 +24,8 @@ module Ask
 
       attr_reader :messages
 
+      attr_writer :test_provider
+
       def initialize(model:, tools: [], temperature: nil, schema: nil, provider: nil, **)
         @model_id = model.respond_to?(:id) ? model.id : model.to_s
         @model_info = Ask::ModelCatalog.find(@model_id)
@@ -33,6 +35,11 @@ module Ask
         @messages = []
         @provider_override = provider
         @provider = nil
+
+        # Read configured middleware and stream transforms from global config
+        config = Ask::Agent.configuration
+        @middleware_pipeline = config.middleware.configured? ? config.middleware : nil
+        @transform_pipeline = config.stream_transforms.configured? ? config.stream_transforms : nil
       end
 
       def ask(message = nil, &block)
@@ -42,20 +49,7 @@ module Ask
         tool_defs = @tools.map { |t| Ask::ToolDef.from_tool(t) }
 
         calls_acc = {}
-
-        provider_model = @model_id
-        provider_tools = tool_defs
-        provider_temp = @temperature
-        provider_schema = @schema&.respond_to?(:to_json_schema) ? @schema.to_json_schema : @schema
-        provider_params = @extra_params || {}
-
-        result = chat_with_retry(stream, calls_acc, &block)
-
-        response_msg = if result.respond_to?(:chunks)
-          build_stream_response(result, calls_acc)
-        else
-          build_response(result)
-        end
+        response_msg = chat_with_retry(stream, calls_acc, &block)
 
         @messages << Ask::Message.new(
           role: :assistant,
@@ -104,9 +98,9 @@ module Ask
         @messages.clear
       end
 
-      attr_writer :test_provider
-
       private
+
+      MAX_CHAT_RETRIES = 3
 
       def provider
         @test_provider || @provider ||= build_provider
@@ -119,11 +113,6 @@ module Ask
       end
 
       def provider_config(slug)
-        # Try credential names from most to least specific:
-        #   1. Flat key with full slug (opencode_go_api_key)
-        #   2. Nested path with full slug ([:opencode, :go, :api_key])
-        #   3. Flat key with base slug  (opencode_api_key)
-        #   4. Nested path with base slug ([:opencode, :api_key])
         slug_s = slug.to_s
         base_s = slug_s.include?("_") ? slug_s.split("_").first : nil
 
@@ -141,6 +130,115 @@ module Ask
         config[:"#{slug}_api_key"] = key
         config[:"#{slug}_api_base"] = base_url if base_url
         Ask::LLM::Config.new(config)
+      end
+
+      # Build the request hash for the provider call.
+      # Middleware can mutate this hash to inject defaults, modify params, etc.
+      def build_request(stream)
+        {
+          messages: @messages.map(&:to_h),
+          model: @model_id,
+          tools: @tools.map { |t| Ask::ToolDef.from_tool(t) },
+          temperature: @temperature,
+          stream: stream,
+          schema: @schema&.respond_to?(:to_json_schema) ? @schema.to_json_schema : @schema,
+          extra_params: (@extra_params || {}).dup
+        }
+      end
+
+      # Dispatch a provider.chat(...) call. Uses the request hash that was
+      # already transformed by middleware (if any).
+      def call_provider(req, calls_acc, &block)
+        provider.chat(
+          req[:messages],
+          model: req[:model],
+          tools: req[:tools],
+          temperature: req[:temperature],
+          stream: req[:stream],
+          schema: req[:schema],
+          **req[:extra_params]
+        ) do |raw_chunk|
+          next unless block
+          process_chunk(raw_chunk, calls_acc, &block)
+        end
+      end
+
+      # Process a raw chunk through the stream transform pipeline (if configured),
+      # then yield ChatChunks to the caller's block.
+      def process_chunk(raw_chunk, calls_acc, &block)
+        if @transform_pipeline
+          # The transform chain will yield 0, 1, or many transformed chunks
+          wrapped = @transform_pipeline.wrap do |transformed|
+            accumulate_tool_calls(transformed, calls_acc)
+            block.call(ChatChunk.new(
+              content: transformed.content,
+              tool_calls: build_current_tool_calls(calls_acc),
+              thinking: transformed.respond_to?(:thinking) ? transformed.thinking : nil,
+              input_tokens: nil,
+              output_tokens: nil
+            ))
+          end
+          wrapped.call(raw_chunk)
+        else
+          accumulate_tool_calls(raw_chunk, calls_acc)
+          block.call(ChatChunk.new(
+            content: raw_chunk.content,
+            tool_calls: build_current_tool_calls(calls_acc),
+            thinking: raw_chunk.respond_to?(:thinking) ? raw_chunk.thinking : nil,
+            input_tokens: nil,
+            output_tokens: nil
+          ))
+        end
+      end
+
+      def chat_with_retry(stream, calls_acc, &block)
+        MAX_CHAT_RETRIES.times do |attempt|
+          begin
+            req = build_request(stream)
+
+            result = if @middleware_pipeline
+              @middleware_pipeline.invoke(provider, req) do
+                call_provider(req, calls_acc, &block)
+              end
+            else
+              call_provider(req, calls_acc, &block)
+            end
+
+            # Flush any buffered stream transforms (e.g. TextBuffer)
+            if block && @transform_pipeline
+              flush_transforms(&block)
+            end
+
+            return build_response_from_result(result, calls_acc, stream)
+          rescue Ask::RateLimitError => e
+            raise if attempt >= MAX_CHAT_RETRIES - 1
+
+            delay = e.retry_after || ((2**attempt) + rand(0.0..1.0))
+            sleep(delay)
+          end
+        end
+      end
+
+      # After the stream ends, flush any buffered state from transforms
+      # (e.g. TextBuffer's remaining buffer, pending metadata).
+      def flush_transforms(&block)
+        @transform_pipeline.flush do |chunk|
+          block.call(ChatChunk.new(
+            content: chunk.content,
+            tool_calls: {},
+            thinking: chunk.respond_to?(:thinking) ? chunk.thinking : nil,
+            input_tokens: nil,
+            output_tokens: nil
+          ))
+        end
+      end
+
+      def build_response_from_result(result, calls_acc, stream)
+        if result.respond_to?(:chunks)
+          build_stream_response(result, calls_acc)
+        else
+          build_response(result)
+        end
       end
 
       def accumulate_tool_calls(raw_chunk, calls_acc)
@@ -232,41 +330,6 @@ module Ask
         nil
       end
 
-      MAX_CHAT_RETRIES = 3
-
-      def chat_with_retry(stream, calls_acc, &block)
-        MAX_CHAT_RETRIES.times do |attempt|
-          begin
-            return provider.chat(
-              @messages.map(&:to_h),
-              model: @model_id,
-              tools: @tools.map { |t| Ask::ToolDef.from_tool(t) },
-              temperature: @temperature,
-              stream: stream,
-              schema: @schema&.respond_to?(:to_json_schema) ? @schema.to_json_schema : @schema,
-              **(@extra_params || {})
-            ) do |raw_chunk|
-              next unless block
-
-              accumulate_tool_calls(raw_chunk, calls_acc)
-
-              block.call(ChatChunk.new(
-                content: raw_chunk.content,
-                tool_calls: build_current_tool_calls(calls_acc),
-                thinking: raw_chunk.respond_to?(:thinking) ? raw_chunk.thinking : nil,
-                input_tokens: nil,
-                output_tokens: nil
-              ))
-            end
-          rescue Ask::RateLimitError => e
-            raise if attempt >= MAX_CHAT_RETRIES - 1
-
-            delay = e.retry_after || ((2 ** attempt) + rand(0.0..1.0))
-            sleep(delay)
-          end
-        end
-      end
-
       def emit_instrumentation(stream, response_msg)
         return unless defined?(Ask::Instrumentation)
 
@@ -277,7 +340,9 @@ module Ask
           output_tokens: response_msg.output_tokens,
           cost: response_msg.cost,
           tool_calls: response_msg.tool_call?,
-          stream: stream
+          stream: stream,
+          middleware: @middleware_pipeline&.configured?,
+          stream_transforms: @transform_pipeline&.configured?
         }.compact
 
         if stream

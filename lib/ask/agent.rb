@@ -24,6 +24,22 @@ module Ask
       autoload :AuditLog, "ask/agent/extensions/audit_log"
     end
 
+    module Middleware
+      autoload :Base, "ask/agent/middleware/base"
+      autoload :Pipeline, "ask/agent/middleware/pipeline"
+      autoload :RetryOnFailure, "ask/agent/middleware/retry_on_failure"
+      autoload :LogCalls, "ask/agent/middleware/log_calls"
+      autoload :DefaultSettings, "ask/agent/middleware/default_settings"
+    end
+
+    module StreamTransforms
+      autoload :Base, "ask/agent/stream_transforms/base"
+      autoload :Pipeline, "ask/agent/stream_transforms/pipeline"
+      autoload :ThinkingSeparator, "ask/agent/stream_transforms/thinking_separator"
+      autoload :TextBuffer, "ask/agent/stream_transforms/text_buffer"
+      autoload :ExtractJson, "ask/agent/stream_transforms/extract_json"
+    end
+
     class << self
       def configuration
         @configuration ||= Configuration.new
