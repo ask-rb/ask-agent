@@ -1,3 +1,9 @@
+## [0.9.1] — 2026-07-21
+
+### Changed
+
+- **`prompt_caching` now defaults to `true`** globally. All sessions automatically send cache-control hints to supporting providers (Anthropic, OpenAI). Non-supporting providers ignore the parameter safely.
+
 ## [0.9.0] — 2026-07-21
 
 ### Added
