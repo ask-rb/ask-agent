@@ -55,6 +55,49 @@ module Ask
           end
         end
 
+        # Set or get the provider override.
+        def provider(value = :__no_value__)
+          if value == :__no_value__
+            _config[:provider]
+          else
+            _config[:provider] = value
+          end
+        end
+
+        # Set or get max turns for the session.
+        def max_turns(value = :__no_value__)
+          if value == :__no_value__
+            _config[:max_turns]
+          else
+            _config[:max_turns] = value
+          end
+        end
+
+        # Set or get parallel tool execution flag.
+        def parallel_tools(value = :__no_value__)
+          if value == :__no_value__
+            _config.key?(:parallel_tools) ? _config[:parallel_tools] : true
+          else
+            _config[:parallel_tools] = value
+          end
+        end
+
+        # Set an arbitrary Session option. Accepts any key that
+        # Ask::Agent::Session.new understands.
+        #
+        #   option :temperature, 0.7
+        #   option :reflector, true
+        #   option :telemetry, false
+        def option(key, value = :__no_value__)
+          if value == :__no_value__
+            _config[:options] ||= {}
+            _config[:options][key]
+          else
+            _config[:options] ||= {}
+            _config[:options][key] = value
+          end
+        end
+
         # Set tool symbols or classes.
         def tools(*values)
           if values.any?

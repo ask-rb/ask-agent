@@ -145,6 +145,16 @@ module Ask
         config = klass._config
         session_opts = { model: config[:model] || Ask::Agent.configuration.default_model }
 
+        # Pass optional config
+        session_opts[:provider] = config[:provider] if config[:provider]
+        session_opts[:max_turns] = config[:max_turns] if config[:max_turns]
+        session_opts[:parallel_tools] = config[:parallel_tools] if config.key?(:parallel_tools)
+
+        # Pass arbitrary session options
+        if config[:options]
+          session_opts.merge!(config[:options])
+        end
+
         # Pass agent directory for per-agent skills discovery
         session_opts[:agent_dir] = dir
 
