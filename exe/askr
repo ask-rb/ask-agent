@@ -1,0 +1,15 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# askr — CLI for the ask-rb agent ecosystem.
+#
+# Usage:
+#   askr run <agent-name> [prompt]      Run an agent with an optional prompt
+#   askr list                           List all discovered agents
+#   askr schedule                        Start the scheduler for recurring agents
+#   askr new <agent-name>               Scaffold a new agent directory
+#   askr help                            Show this help
+
+require "ask/agent"
+
+Ask::Agent::CLI.run(ARGV)

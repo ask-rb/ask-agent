@@ -1,3 +1,45 @@
+## [0.7.0] — 2026-07-21
+
+### Added
+
+- **Agent definitions — `Ask::Agent::Definition`** — Declarative agent configuration via subclassing. Define agents in `agents/<name>/agent.rb` or `app/agents/<name>/agent.rb`. The directory name becomes the agent name. Instructions auto-load from a sibling `instructions.md`.
+
+  ```ruby
+  # agents/health_check/agent.rb
+  class HealthCheckAgent < Ask::Agent::Definition
+    model "gpt-4o"
+    tools :bash, :read, :grep
+    schedule "every 5 minutes"
+  end
+  ```
+
+- **`Ask::Agent.new(name)`** — Create a configured `Session` from a named definition. Discovers agents from `agents/` and `app/agents/` automatically on first call.
+
+  ```ruby
+  agent = Ask::Agent.new("health_check")
+  agent.run("Check server health")
+  ```
+
+- **`Ask::Agent.definitions`** — Returns all discovered definitions as a hash keyed by agent name. Each entry is `[Definition_subclass, directory_path]`.
+
+- **`Ask::Agent.rediscover!`** — Force re-discovery when agent files change.
+
+- **Shared tools** — `agents/shared/tools/*.rb` are auto-discovered and available to all agents in the same project.
+
+- **`askr` CLI** — New command-line tool for running, listing, scheduling, and scaffolding agents.
+
+  ```bash
+  askr list                    # List all discovered agents
+  askr run health_check        # Run an agent (interactive if no prompt)
+  askr schedule                # Start the scheduler for all scheduled agents
+  askr new deploy_bot          # Scaffold a new agent directory
+  ```
+
+### Changed
+
+- **New dependency** — Ask::Agent::CLI module added to the lib path. `exe/askr` is registered as a gem executable.
+- **Test fixture agents** added under `test/fixtures/agents/` and `test/fixtures/app/agents/` for discovery testing.
+
 ## [0.6.1] — 2026-07-21
 
 ### Changed

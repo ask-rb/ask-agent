@@ -18,6 +18,8 @@ module Ask
     class CompactionFailed < Error; end
     class SessionNotPersisted < Error; end
 
+    class UnknownAgent < Error; end
+
     module Extensions
       autoload :PermissionGate, "ask/agent/extensions/permission_gate"
       autoload :RateLimiter, "ask/agent/extensions/rate_limiter"
@@ -40,19 +42,167 @@ module Ask
       autoload :ExtractJson, "ask/agent/stream_transforms/extract_json"
     end
 
+    @registry = {}
+    @discovered = false
+    @shared_tools = {}
+
     class << self
-      def configuration
-        @configuration ||= Configuration.new
+      # All discovered agent definitions, keyed by name.
+      # Triggers discovery on first call.
+      # @return [Hash<String, Array(Class, String)>] name → [Definition subclass, directory path]
+      def definitions
+        discover!
+        @registry.dup
       end
 
-      def configure
-        yield configuration
+      # Create a new agent session from a named definition.
+      #
+      # @param name [String, Symbol] the agent name (directory name under +agents/+)
+      # @return [Session] a configured, ready-to-run session
+      def new(name)
+        discover!
+        entry = @registry[name.to_s]
+        raise UnknownAgent, "Unknown agent: #{name.inspect}. Searched agents/ and app/agents/." unless entry
+
+        klass, dir = entry
+        build_session_from_definition(klass, dir)
       end
 
-      def load_extensions
-        Dir[File.expand_path("agent/extensions/*.rb", __dir__)].each { |f| require f }
-      rescue Errno::ENOENT
+      # Force re-discovery of agent definitions.
+      def rediscover!
+        @discovered = false
+        @registry = {}
+        discover!
       end
+
+      # Paths where agent directories are discovered.
+      def default_agent_paths
+        [
+          File.join(Dir.pwd, "agents"),
+          File.join(Dir.pwd, "app", "agents")
+        ]
+      end
+
+      # Resolve a tool symbol to a tool class.
+      # Checks the shared tools directory first, then falls back to the
+      # global tool registry from ask-tools.
+      def resolve_tool_symbol(symbol)
+        @shared_tools[symbol.to_s] || begin
+          Ask::Tools[symbol.to_s]
+        rescue StandardError
+          nil
+        end
+      end
+
+      private
+
+      def discover!
+        return if @discovered
+        @discovered = true
+
+        paths = default_agent_paths
+        paths.each do |base|
+          next unless File.directory?(base)
+
+          # Discover shared tools
+          discover_shared_tools(base)
+
+          # Discover agent directories
+          Dir["#{base}/*/agent.rb"].sort.each do |file|
+            dir = File.dirname(file)
+            name = File.basename(dir)
+            next if name == "shared"
+
+            require file
+
+            # Find the Definition subclass whose directory matches
+            match = Definition.subclasses.find { |klass|
+              klass._config[:dir] == dir
+            }
+
+            if match
+              @registry[name] = [match, dir]
+            end
+          end
+        end
+      end
+
+      def discover_shared_tools(base)
+        shared_tools_dir = File.join(base, "shared", "tools")
+        return unless File.directory?(shared_tools_dir)
+
+        Dir["#{shared_tools_dir}/*.rb"].sort.each do |file|
+          tool_name = File.basename(file, ".rb")
+          require file
+
+          # Find the Ask::Tool subclass that was just loaded
+          # (it registered itself in Ask::Tools on require)
+          @shared_tools[tool_name] = tool_name
+        end
+      end
+
+      def build_session_from_definition(klass, dir)
+        config = klass._config
+        session_opts = { model: config[:model] || Ask::Agent.configuration.default_model }
+
+        # Resolve tools
+        tools = resolve_definition_tools(config[:tools], dir)
+        session_opts[:tools] = tools if tools.any?
+
+        # Load instructions
+        prompt = klass.instructions_content
+        session_opts[:system_prompt] = prompt if prompt
+
+        # Apply schedule if defined
+        schedule = config[:schedule]
+        if schedule
+          task_block = ->(sess = nil) {
+            agent = build_session_from_definition(klass, dir)
+            agent.run("")
+          }
+          Ask::Agent.configuration.scheduler.every(schedule, name: File.basename(dir), &task_block)
+        end
+
+        Session.new(**session_opts)
+      end
+
+      def resolve_definition_tools(tool_specs, dir)
+        tools = []
+        tool_specs.each do |spec|
+          case spec
+          when Symbol, String
+            name = spec.to_s
+            # Try per-agent tools directory
+            agent_tool_path = File.join(dir, "tools", "#{name}.rb")
+            if File.exist?(agent_tool_path)
+              require agent_tool_path
+            end
+
+            resolved = resolve_tool_symbol(name)
+            if resolved
+              tool_class = resolved.is_a?(Class) ? resolved : Ask::Tools[name]
+              tools << tool_class if tool_class
+            end
+          when Class
+            tools << spec
+          end
+        end
+        tools
+      end
+    end
+
+    # Register the global config
+    def self.configuration
+      @configuration ||= Configuration.new
+    end
+
+    def self.configure
+      yield configuration
+    end
+
+    def self.load_extensions
+      Dir[File.expand_path("agent/extensions/*.rb", __dir__)].each { |f| require f }
+    rescue Errno::ENOENT
     end
   end
 end
@@ -70,10 +220,12 @@ require_relative "agent/compactor"
 require_relative "agent/hooks"
 require_relative "agent/configuration"
 require_relative "agent/meta_agent"
-require_relative "agent/scheduler"
 require_relative "agent/persistence/base"
 require_relative "agent/persistence/in_memory"
 require_relative "agent/skills/load_skill_tool"
+require_relative "agent/scheduler"
+require_relative "agent/definition"
+require_relative "agent/cli"
 
 # Test helpers (loaded on demand)
 autoload :Test, "ask/agent/test"
