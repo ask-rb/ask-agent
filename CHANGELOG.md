@@ -1,3 +1,31 @@
+## [0.11.0] — 2026-07-22
+
+### Added
+
+- **`Definition#parallel_tools` DSL** — set parallel tool execution per agent:
+  ```ruby
+  class MyAgent < Ask::Agent::Definition
+    model "gpt-4o"
+    parallel_tools false
+  end
+  ```
+  Defaults to `true`.
+
+- **`Definition#option` DSL** — pass arbitrary Session options:
+  ```ruby
+  class MyAgent < Ask::Agent::Definition
+    model "gpt-4o"
+    option :temperature, 0.7
+    option :reflector, true
+  end
+  ```
+
+- **17 new tests** for Definition DSL — model, provider, max_turns, parallel_tools, tools, schedule, option, instructions_path, instructions_content, subclass tracking.
+
+### Fixed
+
+- **`build_session_from_definition` passes `parallel_tools` and custom options** to `Session.new`. Previously only `model`, `provider`, and `max_turns` were forwarded.
+
 ## [0.10.0] — 2026-07-21
 
 ### Added
