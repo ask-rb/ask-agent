@@ -1,3 +1,17 @@
+## [0.10.0] — 2026-07-21
+
+### Added
+
+- **`askr skills` CLI commands** — new subcommands for discovering and inspecting skills:
+
+  ```bash
+  askr skills list              # All discovered skills with descriptions and tags
+  askr skills show rails_debug  # Full details + instructions + sibling files
+  askr skills search deploy     # Search by name, description, or tags
+  ```
+
+  Skills commands integrate with ask-skills 0.4.0, supporting enhanced frontmatter (tags, version, metadata) and sibling file discovery.
+
 ## [0.9.1] — 2026-07-21
 
 ### Changed

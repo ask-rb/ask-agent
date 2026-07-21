@@ -15,6 +15,8 @@ module Ask
           cmd_schedule
         when "new"
           cmd_new(argv[1..])
+        when "skills"
+          cmd_skills(argv[1..])
         when "help", "--help", "-h", nil
           cmd_help
         else
@@ -150,6 +152,113 @@ module Ask
         puts "Run it:  askr run #{name}"
       end
 
+      def cmd_skills(args)
+        sub = args.first
+
+        case sub
+        when "list"
+          cmd_skills_list
+        when "show"
+          cmd_skills_show(args[1])
+        when "search"
+          cmd_skills_search(args[1])
+        else
+          puts "Usage: askr skills <list|show|search>"
+          puts ""
+          puts "Commands:"
+          puts "  list                  List all discovered skills"
+          puts "  show <name>           Show skill details and sibling files"
+          puts "  search <query>        Search skills by name, description, or tags"
+        end
+      end
+
+      def cmd_skills_list
+        require "ask/skills"
+        registry = Ask::Skills.discover
+
+        if registry.names.empty?
+          puts "No skills found."
+          return
+        end
+
+        puts "Discovered skills:"
+        puts ""
+        registry.names.sort.each do |name|
+          skill = registry[name]
+          puts "  #{skill.name}"
+          puts "    description: #{skill.description}"
+          puts "    tags:        #{skill.tags.join(", ")}" if skill.tags.any?
+          siblings = skill.siblings
+          if siblings.any?
+            summaries = siblings.map { |cat, files| "#{files.length} #{cat}" }.join(", ")
+            puts "    files:       #{summaries}"
+          end
+        end
+      end
+
+      def cmd_skills_show(name)
+        unless name
+          puts "Usage: askr skills show <name>"
+          exit 1
+        end
+
+        require "ask/skills"
+        registry = Ask::Skills.discover
+        skill = registry[name]
+
+        unless skill
+          puts "Skill not found: #{name}"
+          exit 1
+        end
+
+        puts "Name:        #{skill.name}"
+        puts "Description: #{skill.description}"
+        puts "Source:      #{skill.source}"
+        puts "Tags:        #{skill.tags.join(", ")}" if skill.tags.any?
+
+        if skill.siblings.any?
+          puts ""
+          puts "Sibling files:"
+          skill.siblings.each do |category, files|
+            puts "  #{category}/"
+            files.each { |f| puts "    #{f}" }
+          end
+        end
+
+        puts ""
+        puts "--- Instructions ---"
+        puts skill.instructions
+      end
+
+      def cmd_skills_search(query)
+        unless query
+          puts "Usage: askr skills search <query>"
+          exit 1
+        end
+
+        require "ask/skills"
+        registry = Ask::Skills.discover
+        query_down = query.downcase
+
+        matches = registry.names.select do |name|
+          skill = registry[name]
+          name.downcase.include?(query_down) ||
+            skill.description.downcase.include?(query_down) ||
+            skill.tags.any? { |t| t.downcase.include?(query_down) }
+        end
+
+        if matches.empty?
+          puts "No skills matching \"#{query}\"."
+          return
+        end
+
+        puts "Skills matching \"#{query}\":"
+        matches.sort.each do |name|
+          skill = registry[name]
+          puts "  #{skill.name} — #{skill.description}"
+        end
+      end
+
       def cmd_help
         puts <<~HELP
           Usage: askr <command> [options]
@@ -159,18 +268,26 @@ module Ask
             list                   List all discovered agents
             schedule               Start the scheduler for all scheduled agents
             new <name>             Scaffold a new agent directory
+            skills list            List all discovered skills
+            skills show <name>     Show skill details and instructions
+            skills search <query>  Search skills by name, description, or tags
             help                   Show this help
 
           Examples:
             askr list
             askr run health_check
-            askr run health_check "Check the server status"
-            askr new deploy_bot
             askr schedule
+            askr skills list
+            askr skills show rails_debug
+            askr skills search deploy
 
           Agent directories are discovered from:
             ./agents/<name>/agent.rb
             ./app/agents/<name>/agent.rb
+
+          Skills are discovered from:
+            ./agents/shared/skills/<name>/SKILL.md
+            ./app/agents/shared/skills/<name>/SKILL.md
         HELP
       end
 
