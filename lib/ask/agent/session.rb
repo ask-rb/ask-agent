@@ -48,24 +48,10 @@ module Ask
         @compactor = compactor ? build_compactor(compactor) : nil
         @hooks = Hooks.new(hooks)
 
-        # Auto-discover skills (shared + per-agent if agent_dir is given)
-        @skills_registry = Ask::Skills.discover(agent_dir: @agent_dir) rescue nil
-        if @skills_registry && !@skills_registry.names.empty?
-          skill_text = @skills_registry.format_for_prompt
-          if !skill_text.empty? && @chat.messages.any? { |m| m.role == :system }
-            current = @chat.messages.find { |m| m.role == :system }.content.to_s
+        # Build system context from typed sources
+        @system_context = build_system_context(system_prompt)
+        apply_system_context
 
-            # Append skill listing
-            augmented = current + skill_text
-
-            # Auto-inject full instructions for always-active skills
-            @skills_registry.always_active_skills.each do |skill|
-              augmented += "\n\n## Skill: #{skill.name}\n#{skill.description}\n\n#{skill.instructions}"
-            end
-
-            @chat.with_instructions(augmented)
-          end
-        end
         @persistence = persistence
 
         reflector_opts = reflector.is_a?(Hash) ? reflector : {}
@@ -354,6 +340,32 @@ module Ask
         @chat.messages.reverse_each.lazy
           .select { |m| m.role == :assistant && m.content.to_s.strip.length > 0 }
           .first&.content.to_s
+      end
+
+      # Build the system context from typed sources.
+      def build_system_context(prompt)
+        sources = []
+        sources << Ask::Agent::ContextSources::Instructions.new(prompt) if prompt
+
+        # Auto-discover skills (shared + per-agent if agent_dir is given)
+        @skills_registry = Ask::Skills.discover(agent_dir: @agent_dir) rescue nil
+        if @skills_registry && !@skills_registry.names.empty?
+          sources << Ask::Agent::ContextSources::SkillsList.new(@skills_registry)
+          if @skills_registry.always_active_skills.any?
+            sources << Ask::Agent::ContextSources::AlwaysActiveSkills.new(@skills_registry)
+          end
+        end
+
+        SystemContext.new(sources)
+      end
+
+      # Render the system context and apply it to the chat.
+      def apply_system_context
+        rendered = @system_context.render
+        return if rendered.empty?
+        return unless @chat.messages.any? { |m| m.role == :system }
+
+        @chat.with_instructions(rendered)
       end
     end
   end

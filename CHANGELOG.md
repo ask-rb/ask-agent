@@ -1,3 +1,30 @@
+## [0.12.0] — 2026-07-22
+
+### Added
+
+- **System Context algebra** — typed, independently-observable context sources
+  that compose into the system prompt. Each source has a unique key, a `load`
+  function, a `baseline` render for initialization, and an `update` render for
+  mid-conversation changes.
+
+- **Built-in context sources:**
+  - `Instructions` — agent's core system prompt / instructions.md
+  - `SkillsList` — "## Available Skills" listing from the skills registry
+  - `AlwaysActiveSkills` — full instructions for skills with `always: true`
+  - `Date` — today's date in ISO 8601 format
+
+- **`SystemContext#changes`** — detects which sources have changed since the
+  last snapshot and returns update texts. Enables mid-conversation updates
+  (e.g., date rollover, skill registry changes) without rebuilding the entire
+  prompt.
+
+- **`Ask::Agent::ContextSource` base class** — DSL for defining typed context
+  sources with `key`, `load`, `baseline`, and optional `update`.
+
+- **`Session` uses SystemContext** — the system prompt is now assembled from
+  typed sources instead of string concatenation, with 17 tests covering
+  rendering, change detection, and source composition.
+
 ## [0.11.0] — 2026-07-22
 
 ### Added

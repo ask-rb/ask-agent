@@ -222,6 +222,9 @@ end
 
 require_relative "agent/version"
 require_relative "agent/events"
+require_relative "agent/system_context"
+require_relative "agent/context_source"
+require_relative "agent/context_sources"
 require_relative "agent/chat"
 require_relative "agent/telemetry"
 require_relative "agent/tool_abort_controller"
