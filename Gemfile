@@ -25,3 +25,5 @@ group :test do
   gem "mocha", "~> 3.1"
   gem "rake", "~> 13.0"
 end
+
+gem "rufus-scheduler", "~> 3.9"

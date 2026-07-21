@@ -1,3 +1,37 @@
+## [0.6.0] — 2026-07-21
+
+### Added
+
+- **Agent Scheduler** — `Ask::Agent::Scheduler` runs recurring agent tasks on cron schedules or human-readable intervals. Configure tasks alongside middleware and transforms, then start the background loop.
+
+  ```ruby
+  Ask::Agent.configure do |c|
+    c.scheduler.every "5 minutes", name: "health-check" do
+      Ask::Agent::Session.new(model: "gpt-4o").run("Check server health")
+    end
+
+    c.scheduler.cron "0 9 * * 1-5", name: "morning-report" do
+      Ask::Agent::Session.new(model: "gpt-4o").run("Generate daily report")
+    end
+  end
+
+  Ask::Agent::Scheduler.start   # background thread loop
+  Ask::Agent::Scheduler.stop    # graceful shutdown
+  ```
+
+  Manage the scheduler at runtime:
+  - `Ask::Agent::Scheduler.running?` — check if the loop is active
+  - `Ask::Agent::Scheduler.jobs` — list all scheduled jobs (returns `Rufus::Scheduler::Job` objects with `.name`, `.next_time`, etc.)
+  - `Ask::Agent::Scheduler.job_by_name("health-check")` — find a specific job
+  - Tasks without blocks are valid — they register but execute nothing
+
+  Powered by `rufus-scheduler` (added as a runtime dependency). The scheduler is optional — users who don't configure any tasks are unaffected.
+
+### Changed
+
+- **`Ask::Agent::Configuration`** now exposes `#scheduler` returning a `SchedulerConfig` DSL proxy. No breaking changes for existing users.
+- **Gemspec** — added `rufus-scheduler ~> 3.9` as a runtime dependency.
+
 ## [0.5.0] — 2026-07-21
 
 ### Added

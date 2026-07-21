@@ -25,6 +25,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency "ask-tools", ">= 0.1"
   spec.add_dependency "ask-skills", ">= 0.1"
   spec.add_dependency "ask-instrumentation", ">= 0.1"
+  spec.add_dependency "rufus-scheduler", "~> 3.9"
 
   spec.add_development_dependency "minitest", "~> 5.25"
   spec.add_development_dependency "mocha", "~> 3.1"

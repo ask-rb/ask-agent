@@ -22,6 +22,12 @@ module Ask
 
         @middleware = Middleware::Pipeline.new
         @stream_transforms = StreamTransforms::Pipeline.new
+        @scheduler_config = SchedulerConfig.new(self)
+      end
+
+      # @return [SchedulerConfig] DSL for defining recurring agent tasks
+      def scheduler
+        @scheduler_config
       end
     end
   end
