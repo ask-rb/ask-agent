@@ -4,6 +4,9 @@ require_relative "../../test_helper"
 
 class ReflectorTest < Minitest::Test
   def setup
+    Ask::ModelCatalog.reset_instance!
+    Ask::ModelCatalog.instance.register(Ask::ModelInfo.new(id: "gpt-4o", provider: "openai"))
+    Ask::ModelCatalog.instance.register(Ask::ModelInfo.new(id: "claude-sonnet-4", provider: "anthropic"))
     @reflector = Ask::Agent::Reflector.new(model: "gpt-4o", max_reflections: 2)
   end
 

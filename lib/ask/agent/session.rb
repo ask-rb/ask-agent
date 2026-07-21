@@ -54,7 +54,16 @@ module Ask
           skill_text = @skills_registry.format_for_prompt
           if !skill_text.empty? && @chat.messages.any? { |m| m.role == :system }
             current = @chat.messages.find { |m| m.role == :system }.content.to_s
-            @chat.with_instructions(current + skill_text)
+
+            # Append skill listing
+            augmented = current + skill_text
+
+            # Auto-inject full instructions for always-active skills
+            @skills_registry.always_active_skills.each do |skill|
+              augmented += "\n\n## Skill: #{skill.name}\n#{skill.description}\n\n#{skill.instructions}"
+            end
+
+            @chat.with_instructions(augmented)
           end
         end
         @persistence = persistence

@@ -4,22 +4,25 @@ require_relative "test_helper"
 
 class DefinitionTest < Minitest::Test
   FIXTURES = File.expand_path("fixtures", __dir__)
+  TEMP_PREFIX = "ask-agent-test-"
 
   def setup
     Ask::ModelCatalog.reset_instance!
     Ask::ModelCatalog.instance.register(Ask::ModelInfo.new(id: "gpt-4o", provider: "openai"))
     Ask::ModelCatalog.instance.register(Ask::ModelInfo.new(id: "claude-sonnet-4", provider: "anthropic"))
 
-    # Reset registry and force re-discovery
+    # Reset registry for clean discovery each test
     Ask::Agent.instance_variable_set(:@discovered, false)
     Ask::Agent.instance_variable_set(:@registry, {})
 
-    # Clear loaded features for fixture files so require re-loads them
+    # Clear loaded features from fixtures and temp dirs
     $LOADED_FEATURES.delete_if { |f| f.start_with?(FIXTURES) }
   end
 
   def teardown
     Ask::Agent::Scheduler.stop
+    Ask::Agent.configuration.instance_variable_set(:@scheduler_config,
+      Ask::Agent::SchedulerConfig.new(Ask::Agent.configuration))
   end
 
   # -- Definition base class --
@@ -101,9 +104,8 @@ class DefinitionTest < Minitest::Test
   end
 
   def test_instructions_path_for_agent_without_md
-    Dir.chdir(FIXTURES) do
-      # Create a temp agent without instructions
-      dir = File.join(Dir.pwd, "agents", "no_instructions")
+    Dir.mktmpdir do |tmp|
+      dir = File.join(tmp, "agents", "no_instructions")
       FileUtils.mkdir_p(dir)
       File.write(File.join(dir, "agent.rb"), <<~RUBY)
         class NoInstructions < Ask::Agent::Definition
@@ -111,12 +113,12 @@ class DefinitionTest < Minitest::Test
         end
       RUBY
 
-      Ask::Agent.rediscover!
-      klass, _dir = Ask::Agent.definitions["no_instructions"]
-      assert_nil klass.instructions_path
-      assert_nil klass.instructions_content
-    ensure
-      FileUtils.rm_rf(dir)
+      Dir.chdir(tmp) do
+        Ask::Agent.rediscover!
+        klass, _dir = Ask::Agent.definitions["no_instructions"]
+        assert_nil klass.instructions_path
+        assert_nil klass.instructions_content
+      end
     end
   end
 
@@ -149,8 +151,8 @@ class DefinitionTest < Minitest::Test
   end
 
   def test_new_for_agent_without_instructions
-    Dir.chdir(FIXTURES) do
-      dir = File.join(Dir.pwd, "agents", "no_instructions")
+    Dir.mktmpdir do |tmp|
+      dir = File.join(tmp, "agents", "no_instructions")
       FileUtils.mkdir_p(dir)
       File.write(File.join(dir, "agent.rb"), <<~RUBY)
         class NoInstructionsAgent < Ask::Agent::Definition
@@ -158,12 +160,12 @@ class DefinitionTest < Minitest::Test
         end
       RUBY
 
-      Ask::Agent.rediscover!
-      session = Ask::Agent.new("no_instructions")
-      system_msgs = session.chat.messages.select { |m| m.role == :system }
-      assert_equal 0, system_msgs.length, "Should have no system message"
-    ensure
-      FileUtils.rm_rf(dir)
+      Dir.chdir(tmp) do
+        Ask::Agent.rediscover!
+        session = Ask::Agent.new("no_instructions")
+        system_msgs = session.chat.messages.select { |m| m.role == :system }
+        assert_equal 0, system_msgs.length, "Should have no system message"
+      end
     end
   end
 

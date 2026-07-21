@@ -6,6 +6,7 @@ class SchedulerTest < Minitest::Test
   def setup
     Ask::ModelCatalog.reset_instance!
     Ask::ModelCatalog.instance.register(Ask::ModelInfo.new(id: "gpt-4o", provider: "openai"))
+    Ask::ModelCatalog.instance.register(Ask::ModelInfo.new(id: "claude-sonnet-4", provider: "anthropic"))
     @original_tasks = Ask::Agent.configuration.scheduler.each_task.to_a.dup
   end
 
