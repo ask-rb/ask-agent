@@ -21,6 +21,7 @@ module Ask
     class UnknownAgent < Error; end
 
     module Extensions
+      autoload :Permissions, "ask/agent/extensions/permissions"
       autoload :PermissionGate, "ask/agent/extensions/permission_gate"
       autoload :RateLimiter, "ask/agent/extensions/rate_limiter"
       autoload :AuditLog, "ask/agent/extensions/audit_log"

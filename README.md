@@ -60,13 +60,13 @@ end
 
 Opt-in safety modules:
 
-- **PermissionGate** — Require approval for destructive tools (write, edit, bash, destroy)
+- **Permissions** — Access control for tools. Supports named access modes (`:full_access`, `:read_only`, `:ask_before_changes`) or custom blocked-tool lists.
 - **RateLimiter** — Prevent runaway tool calls (configurable per-minute and per-turn limits)
 - **AuditLog** — Immutable, append-only log of every tool call
 
 ```ruby
 extensions = [
-  Ask::Agent::Extensions::PermissionGate.new,
+  Ask::Agent::Extensions::Permissions.new(mode: :read_only),
   Ask::Agent::Extensions::RateLimiter.new(max_calls_per_minute: 30),
   Ask::Agent::Extensions::AuditLog.new(path: "agent.log")
 ]
