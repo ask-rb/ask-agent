@@ -79,8 +79,7 @@ module Ask
 
         emit(Events::SessionStart.new)
 
-        active_tools = resolve_tools(tools || [])
-        active_tools = @tools if active_tools.empty?
+        active_tools = @tools
 
         if active_tools.empty? && !@_no_tools_instructed
           @chat.add_message(role: :system, content: "You have no tools available. Do not claim you can look up information or use tools of any kind. Just respond based on your existing knowledge.")
