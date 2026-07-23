@@ -19,7 +19,8 @@ module Ask
         KNOWN_MIDDLEWARES = {
           retry_on_failure: "Ask::Agent::Middleware::RetryOnFailure",
           log_calls: "Ask::Agent::Middleware::LogCalls",
-          default_settings: "Ask::Agent::Middleware::DefaultSettings"
+          default_settings: "Ask::Agent::Middleware::DefaultSettings",
+          model_fallback: "Ask::Agent::Middleware::ModelFallback"
         }.freeze
 
         def initialize

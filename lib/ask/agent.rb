@@ -33,6 +33,7 @@ module Ask
       autoload :RetryOnFailure, "ask/agent/middleware/retry_on_failure"
       autoload :LogCalls, "ask/agent/middleware/log_calls"
       autoload :DefaultSettings, "ask/agent/middleware/default_settings"
+      autoload :ModelFallback, "ask/agent/middleware/model_fallback"
     end
 
     module StreamTransforms

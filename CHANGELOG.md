@@ -1,3 +1,17 @@
+## [0.13.0] — 2026-07-23
+
+### Added
+
+- **ModelFallback middleware** — Switches to a fallback model+provider when the primary LLM call fails with a rate limit, server error, or service unavailable. Supports static and dynamic (lambda-based) fallback lists. Credentials resolve automatically via `Ask::Auth`.
+  - Static fallbacks: ordered list of `{ model:, provider: }` hashes
+  - Dynamic fallbacks: lambda receiving `(error, request)` returning the list
+  - Custom eligible errors: configure which errors trigger fallback
+  - Each fallback builds its own provider instance with resolved credentials
+
+### Changed
+
+- `Pipeline::KNOWN_MIDDLEWARES` now includes `:model_fallback`.
+
 ## [0.12.0] — 2026-07-22
 
 ### Added

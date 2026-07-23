@@ -81,6 +81,57 @@ session = Ask::Agent::Session.new(
 )
 ```
 
+## Middleware
+
+Wrapping LLM provider calls with cross-cutting behavior:
+
+- **RetryOnFailure** — Retry on rate limits and server errors with exponential backoff
+- **ModelFallback** — Switch to a fallback model+provider on transient errors
+- **LogCalls** — Log every LLM provider call
+- **DefaultSettings** — Inject default generation parameters
+
+```ruby
+Ask::Agent.configure do |c|
+  c.middleware.use :retry_on_failure, max_retries: 3
+  c.middleware.use :model_fallback, fallbacks: [
+    { model: "claude-sonnet-4",  provider: :anthropic },
+    { model: "gemini-2.0-flash", provider: :google }
+  ]
+  c.middleware.use :log_calls, logger: Rails.logger
+  c.middleware.use :default_settings, temperature: 0.7
+end
+```
+
+### ModelFallback
+
+When the primary LLM is overloaded or down, `ModelFallback` transparently switches to a backup model+provider. Credentials for each provider are resolved automatically.
+
+**Static fallbacks** — ordered list tried in sequence:
+```ruby
+c.middleware.use :model_fallback, fallbacks: [
+  { model: "claude-sonnet-4",  provider: :anthropic },
+  { model: "gemini-2.0-flash", provider: :google }
+]
+```
+
+**Dynamic fallbacks** — lambda that receives the error and request:
+```ruby
+c.middleware.use :model_fallback, fallbacks: ->(error, request) {
+  if request[:messages].sum { |m| m[:content].to_s.length } > 100_000
+    [{ model: "claude-sonnet-4", provider: :anthropic }]  # long-context
+  else
+    [{ model: "gpt-4o-mini", provider: :openai }]           # cheaper
+  end
+}
+```
+
+**Custom eligible errors** — by default rate limits, server errors, and service unavailable:
+```ruby
+c.middleware.use :model_fallback,
+  fallbacks: [{ model: "claude-sonnet-4", provider: :anthropic }],
+  eligible_errors: [Ask::RateLimitError, Ask::ServerError]
+```
+
 ## Configuration
 
 ```ruby
