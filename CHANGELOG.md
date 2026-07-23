@@ -1,3 +1,16 @@
+## [0.14.0] — 2026-07-23
+
+### Added
+
+- **`state:` keyword on Session** — Accepts any `Ask::State::Adapter` directly. Sessions persist conversation state, tool results, and metadata. Replaces `persistence:` keyword (still supported for backward compatibility).
+- **Per-turn persistence** — Session now persists after every LLM turn, not just at the end of `run()`. Mid-session crashes no longer lose progress.
+- **`Session.load` restores `@messages`** — Previously `session.messages` returned `nil` after loading. Now it's populated from the restored chat messages.
+- **`Ask::State::Adapter#clear`** — Abstract method added to the adapter contract. Memory adapter implements it.
+
+### Changed
+
+- **Session behind the scenes now uses `@state.set`/`@state.get`/`@state.delete`** instead of the old `@persistence.save`/`@persistence.load`/`@persistence.delete`. Custom adapters must respond to `set`/`get`/`delete`.
+
 ## [0.13.0] — 2026-07-23
 
 ### Added

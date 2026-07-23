@@ -18,7 +18,7 @@ module Ask
       attr_reader :skills_registry
 
       def initialize(model:, tools: [], max_turns: 25, max_tool_retries: 3,
-                     compactor: nil, hooks: {}, persistence: nil,
+                     compactor: nil, hooks: {}, state: nil, persistence: nil,
                      id: nil, system_prompt: nil, parallel_tools: true,
                      reflector: nil, telemetry: true, meta_agent: nil,
                      agent_dir: nil, **chat_options)
@@ -48,11 +48,10 @@ module Ask
         @compactor = compactor ? build_compactor(compactor) : nil
         @hooks = Hooks.new(hooks)
 
-        # Build system context from typed sources
         @system_context = build_system_context(system_prompt)
         apply_system_context
 
-        @persistence = persistence
+        @state = state || persistence
 
         reflector_opts = reflector.is_a?(Hash) ? reflector : {}
         @reflector = if reflector
@@ -89,16 +88,17 @@ module Ask
         begin
           @tool_executor.telemetry = @telemetry
 
-          response = @loop.run_turn(
-            chat: @chat,
-            message: message,
-            tools: active_tools,
-            tool_executor: @tool_executor,
-            compactor: @compactor,
-            hooks: @hooks,
-            event_emitter: self,
-            session_id: @id
-          )
+	          response = @loop.run_turn(
+	            chat: @chat,
+	            message: message,
+	            tools: active_tools,
+	            tool_executor: @tool_executor,
+	            compactor: @compactor,
+	            hooks: @hooks,
+	            event_emitter: self,
+	            session_id: @id,
+	            persist: @state ? method(:persist!) : nil
+	          )
 
           @total_input_tokens += @loop.last_input_tokens.to_i
           @total_output_tokens += @loop.last_output_tokens.to_i
@@ -122,7 +122,7 @@ module Ask
           raise
         ensure
           @running = false
-          persist! if @persistence
+          persist! if @state
         end
 
         @tool_calls_made = @tool_executor.total_executions
@@ -193,34 +193,37 @@ module Ask
       def deleted? = @deleted
 
       def save
-        persist! if @persistence
+        persist! if @state
       end
 
       def self.load(id, adapter:)
-        data = adapter.load(id)
+        data = adapter.get(id)
         return nil unless data
+
+        data = deep_symbolize_keys(data)
 
         session = new(
           id: data[:id],
           model: data.dig(:metadata, :model),
           tools: data.dig(:metadata, :tools)&.map(&:constantize) || [],
-          persistence: adapter
+          state: adapter
         )
 
-        data[:messages].each do |msg|
-          session.chat.add_message(
-            role: msg[:role].to_sym,
-            content: msg[:content],
-            tool_call_id: msg[:tool_call_id]
-          )
-        end
-
-        session
+	        data[:messages].each do |msg|
+	          session.chat.add_message(
+	            role: msg[:role].to_sym,
+	            content: msg[:content],
+	            tool_call_id: msg[:tool_call_id]
+	          )
+	        end
+	
+	        session.instance_variable_set(:@messages, session.chat.messages.dup)
+	        session
       end
 
       def delete
         @deleted = true
-        @persistence&.delete(@id)
+        @state&.delete(@id)
       end
 
       def abort
@@ -290,7 +293,7 @@ module Ask
       end
 
       def persist!
-        @persistence.save(@id, {
+        @state.set(@id, {
           id: @id,
           messages: @chat.messages.map { |m|
             {
@@ -356,6 +359,19 @@ module Ask
         end
 
         SystemContext.new(sources)
+      end
+
+      # Recursively convert string keys to symbol keys in hashes.
+      # Needed when loading session data that was serialized through JSON.
+      def self.deep_symbolize_keys(obj)
+        case obj
+        when Hash
+          obj.each_with_object({}) { |(k, v), h| h[k.to_sym] = deep_symbolize_keys(v) }
+        when Array
+          obj.map { |e| deep_symbolize_keys(e) }
+        else
+          obj
+        end
       end
 
       # Render the system context and apply it to the chat.

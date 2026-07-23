@@ -17,7 +17,7 @@ module Ask
       @max_consecutive_tool_turns = max_consecutive_tool_turns
       end
 
-      def run_turn(chat:, message:, tools:, tool_executor:, compactor:, hooks:, event_emitter:, session_id: nil)
+      def run_turn(chat:, message:, tools:, tool_executor:, compactor:, hooks:, event_emitter:, session_id: nil, persist: nil)
         raise MaxTurnsExceeded if @turn_count >= @max_turns
 
         event_emitter.emit(Events::TurnStart.new)
@@ -103,6 +103,9 @@ module Ask
           compactor.run(event_emitter: event_emitter)
         end
 
+        # Persist after each turn so mid-session crashes don't lose progress
+        persist&.call
+
         raise MaxTurnsExceeded if @turn_count >= @max_turns
 
         # Recursive call — LLM processes tool results
@@ -114,7 +117,8 @@ module Ask
           compactor: compactor,
           hooks: hooks,
           event_emitter: event_emitter,
-          session_id: session_id
+          session_id: session_id,
+          persist: persist
         )
       end
 

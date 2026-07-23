@@ -230,6 +230,97 @@ class SessionTest < Minitest::Test
 
   # --- Skill ---
 
+  # --- State adapter ---
+
+  def test_session_accepts_state_keyword
+    Ask::Agent::Chat.stubs(:new).returns(@chat_stub)
+    store = FakeStateAdapter.new
+    s = Ask::Agent::Session.new(model: "gpt-4o", tools: [], state: store)
+    assert_equal store, s.instance_variable_get(:@state)
+  end
+
+  def test_session_accepts_persistence_keyword_backward_compat
+    Ask::Agent::Chat.stubs(:new).returns(@chat_stub)
+    store = FakeStateAdapter.new
+    s = Ask::Agent::Session.new(model: "gpt-4o", tools: [], persistence: store)
+    assert_equal store, s.instance_variable_get(:@state)
+  end
+
+  def test_state_takes_precedence_over_persistence
+    Ask::Agent::Chat.stubs(:new).returns(@chat_stub)
+    state_store = FakeStateAdapter.new
+    persist_store = FakeStateAdapter.new
+    s = Ask::Agent::Session.new(model: "gpt-4o", tools: [],
+      state: state_store, persistence: persist_store)
+    assert_equal state_store, s.instance_variable_get(:@state)
+  end
+
+  def test_save_persists_to_state
+    Ask::Agent::Chat.stubs(:new).returns(@chat_stub)
+    store = FakeStateAdapter.new
+    s = Ask::Agent::Session.new(model: "gpt-4o", tools: [], state: store)
+    s.chat.add_message(role: :user, content: "hi")
+    s.save
+    assert store.key?("set")
+  end
+
+  def test_delete_removes_from_state
+    Ask::Agent::Chat.stubs(:new).returns(@chat_stub)
+    store = FakeStateAdapter.new
+    s = Ask::Agent::Session.new(model: "gpt-4o", tools: [], state: store)
+    s.delete
+    assert s.deleted?
+    assert store.key?("delete")
+  end
+
+  def test_per_turn_persistence_during_run
+    Ask::Agent::Chat.stubs(:new).returns(@chat_stub)
+    store = FakeStateAdapter.new
+
+    Ask::Agent::Loop.any_instance.stubs(:run_turn).returns("response").then.returns("final")
+
+    s = Ask::Agent::Session.new(model: "gpt-4o", tools: [], state: store)
+    s.run("hello")
+
+    # Persist should have been called at least once (per-turn) plus once in ensure
+    assert_operator store.call_count(:set), :>=, 1, "persist! should be called per-turn"
+  end
+
+  def test_persist_not_called_without_state
+    Ask::Agent::Chat.stubs(:new).returns(@chat_stub)
+    Ask::Agent::Loop.any_instance.stubs(:run_turn).returns("response")
+    s = Ask::Agent::Session.new(model: "gpt-4o", tools: [])
+    s.run("hello")
+    pass "no state adapter — persist! should not be called"
+  end
+
+  def test_load_restores_session
+    Ask::Agent::Chat.stubs(:new).returns(@chat_stub)
+    store = FakeStateAdapter.new
+    data = {
+      id: "restored-session",
+      messages: [{ role: "user", content: "restore me" }],
+      metadata: { model: "gpt-4o", tools: [], max_turns: 5, turn_count: 1,
+                  created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" }
+    }
+    store.set("restored-session", data)
+
+    s = Ask::Agent::Session.load("restored-session", adapter: store)
+    refute_nil s
+    assert_equal "restored-session", s.id
+    assert_equal 1, s.messages.length
+    assert_equal "restore me", s.messages.first.content.to_s
+    assert_equal 1, s.chat.messages.length, "chat should have the same messages"
+  end
+
+  def test_load_nonexistent_returns_nil
+    store = FakeStateAdapter.new
+    s = Ask::Agent::Session.load("no-such-session", adapter: store)
+    assert_nil s
+  end
+
+  # --- Skill ---
+
   def test_skill_not_found_raises
     Ask::Agent::Chat.stubs(:new).returns(@chat_stub)
     s = Ask::Agent::Session.new(model: "gpt-4o", tools: [])
@@ -247,5 +338,39 @@ class SessionTest < Minitest::Test
     chat_stub.define_singleton_method(:messages) { msgs }
     chat_stub.define_singleton_method(:reset_messages!) { msgs.clear }
     chat_stub
+  end
+end
+
+# Test fixture — records every method call for verification.
+# Duck-types Ask::State::Adapter with just the methods the session uses.
+class FakeStateAdapter
+  attr_reader :calls, :data
+
+  def initialize
+    @calls = []
+    @data = {}
+  end
+
+  def get(key)
+    @calls << [:get, key]
+    @data[key]
+  end
+
+  def set(key, value, ttl: nil)
+    @calls << [:set, key]
+    @data[key] = value
+  end
+
+  def delete(key)
+    @calls << [:delete, key]
+    @data.delete(key)
+  end
+
+  def key?(method)
+    @calls.any? { |m, _| m == method.to_sym }
+  end
+
+  def call_count(method)
+    @calls.count { |m, _| m == method.to_sym }
   end
 end
