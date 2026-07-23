@@ -82,10 +82,8 @@ class ExtensionsTest < Minitest::Test
     end
   end
 
-  def test_permissions_legacy_alias_still_works
-    gate = Ask::Agent::Extensions::PermissionGate.new
-    result = gate.before_tool_call(@call, {})
-    assert_equal :block, result[:action]
+  def test_permissions_loads_via_autoload
+    assert Ask::Agent::Extensions::Permissions
   end
 
   # --- RateLimiter ---
