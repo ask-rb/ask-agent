@@ -28,6 +28,11 @@ module Ask
       ReflectionDelta = Data.define(:content)
       ReflectionEnd = Data.define(:decision, :feedback)
 
+      EvaluationStart = Data.define(:dimensions)
+      EvaluationDelta = Data.define(:content)
+      EvaluationEnd = Data.define(:decision, :feedback, :scores, :evidence)
+      EvaluationBlocked = Data.define(:feedback, :scores, :evidence)
+
       MetaAgentAnalysis = Data.define(:results, :count)
 
       Error = Data.define(:error, :recoverable)

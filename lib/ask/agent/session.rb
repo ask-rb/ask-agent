@@ -21,7 +21,7 @@ module Ask
                      compactor: nil, hooks: {}, state: nil, persistence: nil,
                      id: nil, system_prompt: nil, parallel_tools: true,
                      reflector: nil, telemetry: true, meta_agent: nil,
-                     agent_dir: nil, **chat_options)
+                     agent_dir: nil, evaluator: nil, **chat_options)
         @id = id || SecureRandom.uuid
         @agent_dir = agent_dir
         @max_turns = max_turns
@@ -65,6 +65,21 @@ module Ask
         @meta_agent_results = nil
 
         @compactor&.chat = @chat
+
+        # Parse evaluator configuration
+        @evaluator = nil
+        @evaluator_config = {}
+
+        if evaluator
+          eval_model = if evaluator.is_a?(Hash)
+                         @evaluator_config = evaluator
+                         evaluator[:model] || Ask::Agent.configuration.default_evaluator_model || model_id_from(@chat)
+                       else
+                         Ask::Agent.configuration.default_evaluator_model || model_id_from(@chat)
+                       end
+
+          @evaluator = Evaluator.new(model: eval_model)
+        end
       end
 
       def run(message, tools: nil)
@@ -127,7 +142,62 @@ module Ask
 
         @tool_calls_made = @tool_executor.total_executions
 
-        if @reflector && @reflector.reflect?(@tool_calls_made) && !@abort_requested
+        # Independent evaluator step (generator/evaluator separation).
+        # Runs BEFORE self-reflection so the evaluator gets a fresh, unbiased look
+        # at the generator's output using a separate model and isolated context.
+        @skip_reflector = false
+
+        if @evaluator && !@abort_requested
+          goal = @evaluator_config[:goal] || message
+
+          eval_result = @evaluator.evaluate(
+            goal: goal.to_s,
+            response: response,
+            event_emitter: self
+          )
+
+          @telemetry.log(:evaluation_end, session_id: @id,
+                         decision: eval_result.decision,
+                         feedback: eval_result.feedback,
+                         scores: eval_result.scores)
+
+          case eval_result.decision
+          when :revise
+            @chat.add_message(
+              role: :system,
+              content: "An independent evaluator has requested revisions:\n\n#{eval_result.feedback}"
+            )
+
+            response = @loop.run_turn(
+              chat: @chat,
+              message: "",
+              tools: active_tools,
+              tool_executor: @tool_executor,
+              compactor: @compactor,
+              hooks: @hooks,
+              event_emitter: self,
+              session_id: @id
+            )
+
+            @total_input_tokens += @loop.last_input_tokens.to_i
+            @total_output_tokens += @loop.last_output_tokens.to_i
+            @total_cost += @loop.last_cost.to_f
+
+            # Skip reflector — we already iterated based on evaluator feedback
+            @skip_reflector = true
+          when :block
+            emit(Events::EvaluationBlocked.new(
+              feedback: eval_result.feedback,
+              scores: eval_result.scores,
+              evidence: eval_result.evidence
+            ))
+            response = "This response was blocked by the evaluator: #{eval_result.feedback}"
+          when :accept
+            # Fall through to reflector for backward compatibility
+          end
+        end
+
+        if @reflector && !@skip_reflector && @reflector.reflect?(@tool_calls_made) && !@abort_requested
           eval_result = @reflector.evaluate(response: response, event_emitter: self)
           @telemetry.log(:reflection_end, session_id: @id, decision: eval_result[:decision], feedback: eval_result[:feedback])
 

@@ -327,6 +327,127 @@ class SessionTest < Minitest::Test
     assert_raises(Ask::Skills::Error) { s.skill("nonexistent_skill") }
   end
 
+  # --- Evaluator integration ---
+
+  def test_session_with_evaluator_true
+    Ask::Agent::Chat.stubs(:new).returns(@chat_stub)
+    Ask::Agent::Loop.any_instance.stubs(:run_turn).returns("response")
+
+    accept_result = Ask::Agent::Evaluator::Result.new(
+      decision: :accept, feedback: "", scores: { correctness: 2 }, evidence: []
+    )
+    Ask::Agent::Evaluator.any_instance.stubs(:evaluate).returns(accept_result)
+
+    s = Ask::Agent::Session.new(model: "gpt-4o", tools: [], evaluator: true)
+    result = s.run("hello")
+
+    assert_equal "response", result
+    refute_nil s.instance_variable_get(:@evaluator)
+  end
+
+  def test_session_with_evaluator_hash_config
+    Ask::Agent::Chat.stubs(:new).returns(@chat_stub)
+    Ask::Agent::Loop.any_instance.stubs(:run_turn).returns("response")
+
+    accept_result = Ask::Agent::Evaluator::Result.new(
+      decision: :accept, feedback: "", scores: {}, evidence: []
+    )
+    Ask::Agent::Evaluator.any_instance.stubs(:evaluate).returns(accept_result)
+
+    s = Ask::Agent::Session.new(
+      model: "gpt-4o", tools: [],
+      evaluator: { model: "claude-sonnet-4", goal: "Custom goal" }
+    )
+    s.run("hello")
+
+    evaluator = s.instance_variable_get(:@evaluator)
+    refute_nil evaluator
+    assert_equal "claude-sonnet-4", evaluator.model
+  end
+
+  def test_evaluator_revise_triggers_improvement_turn
+    Ask::Agent::Chat.stubs(:new).returns(@chat_stub)
+    Ask::Agent::Loop.any_instance.stubs(:run_turn).returns("first").then.returns("improved")
+
+    revise_result = Ask::Agent::Evaluator::Result.new(
+      decision: :revise, feedback: "Add more detail", scores: { correctness: 1 }, evidence: []
+    )
+    Ask::Agent::Evaluator.any_instance.stubs(:evaluate).returns(revise_result)
+
+    s = Ask::Agent::Session.new(model: "gpt-4o", tools: [], evaluator: true)
+    result = s.run("hello")
+
+    assert_equal "improved", result
+  end
+
+  def test_evaluator_revise_skips_reflector
+    Ask::Agent::Chat.stubs(:new).returns(@chat_stub)
+
+    # Run two turns: first normal, second triggered by evaluator revise
+    Ask::Agent::Loop.any_instance.stubs(:run_turn).returns("first").then.returns("improved")
+
+    revise_result = Ask::Agent::Evaluator::Result.new(
+      decision: :revise, feedback: "Fix it", scores: { correctness: 1 }, evidence: []
+    )
+    Ask::Agent::Evaluator.any_instance.stubs(:evaluate).returns(revise_result)
+
+    reflector = mock
+    reflector.expects(:reflect?).never
+    Ask::Agent::Reflector.stubs(:new).returns(reflector)
+
+    s = Ask::Agent::Session.new(
+      model: "gpt-4o", tools: [],
+      reflector: true, evaluator: true
+    )
+    s.run("hello")
+  end
+
+  def test_evaluator_block_returns_blocked_message
+    Ask::Agent::Chat.stubs(:new).returns(@chat_stub)
+    Ask::Agent::Loop.any_instance.stubs(:run_turn).returns("wrong answer")
+
+    block_result = Ask::Agent::Evaluator::Result.new(
+      decision: :block, feedback: "Completely wrong approach",
+      scores: { correctness: 0 }, evidence: ["Does not address goal"]
+    )
+    Ask::Agent::Evaluator.any_instance.stubs(:evaluate).returns(block_result)
+
+    s = Ask::Agent::Session.new(model: "gpt-4o", tools: [], evaluator: true)
+    result = s.run("hello")
+
+    assert_includes result, "blocked by the evaluator"
+    assert_includes result, "Completely wrong approach"
+  end
+
+  def test_evaluator_block_emits_blocked_event
+    Ask::Agent::Chat.stubs(:new).returns(@chat_stub)
+    Ask::Agent::Loop.any_instance.stubs(:run_turn).returns("wrong answer")
+
+    block_result = Ask::Agent::Evaluator::Result.new(
+      decision: :block, feedback: "Wrong",
+      scores: {}, evidence: []
+    )
+    Ask::Agent::Evaluator.any_instance.stubs(:evaluate).returns(block_result)
+
+    s = Ask::Agent::Session.new(model: "gpt-4o", tools: [], evaluator: true)
+    events = []
+    s.on(Ask::Agent::Events::EvaluationBlocked) { |e| events << e }
+    s.run("hello")
+
+    assert events.any?
+    assert_equal "Wrong", events.first.feedback
+  end
+
+  def test_evaluator_not_configured_skips_evaluation
+    Ask::Agent::Chat.stubs(:new).returns(@chat_stub)
+    Ask::Agent::Loop.any_instance.stubs(:run_turn).returns("response")
+
+    Ask::Agent::Evaluator.any_instance.expects(:evaluate).never
+
+    s = Ask::Agent::Session.new(model: "gpt-4o", tools: [])
+    s.run("hello")
+  end
+
   private
 
   def build_chat_stub

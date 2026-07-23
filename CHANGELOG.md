@@ -1,3 +1,67 @@
+## [0.15.0] — 2026-07-24
+
+### Added
+
+- **Independent Evaluator — `Ask::Agent::Evaluator`** — Generator/evaluator separation.
+  A separate model (configured independently from the session's model) judges the
+  agent's output against a structured rubric before delivery. This prevents the
+  anti-pattern of a model grading its own work.
+
+  ```ruby
+  # Evaluate with a different model — the recommended approach
+  session = Ask::Agent::Session.new(
+    model: "gpt-4o",
+    evaluator: { model: "claude-sonnet-4", goal: "Write an email validator" }
+  )
+  session.run("Write email validation")
+  ```
+
+  Three verdicts:
+  - **`:accept`** — output meets the goal, passes through to reflection
+  - **`:revise`** — evaluator provides actionable feedback; session runs another
+    turn with the feedback injected into system context
+  - **`:block`** — output is fundamentally wrong; session returns blocked message
+    and emits `Events::EvaluationBlocked`
+
+  Rubric dimensions (each scored 0-2):
+  - correctness (3× weight), completeness (2×), verification (2×), scope (1×), clarity (1×)
+
+  Custom rubrics supported:
+  ```ruby
+  evaluator = Ask::Agent::Evaluator.new(
+    model: "claude-sonnet-4",
+    rubric: [
+      Ask::Agent::Evaluator::Dimension.new(name: "performance", description: "Is it fast?", weight: 2)
+    ]
+  )
+  ```
+
+- **`evaluator:` option on `Session`** — accepts `true`, `false`/`nil`, or a Hash:
+  - `evaluator: true` — uses `config.default_evaluator_model` (falls back to the
+    session's model, though using a different model is strongly recommended)
+  - `evaluator: { model: "claude-sonnet-4", goal: "Custom goal" }` — explicit config
+  - `evaluator: false` (default) — no evaluation, backward compatible
+
+- **`default_evaluator_model` config option** — set a global default:
+  ```ruby
+  Ask::Agent.configure do |c|
+    c.default_evaluator_model = "claude-sonnet-4"
+  end
+  ```
+
+- **New event types** for streaming evaluation:
+  - `Events::EvaluationStart` — emitted when evaluation begins (includes dimension list)
+  - `Events::EvaluationDelta` — streamed evaluation text from the evaluator model
+  - `Events::EvaluationEnd` — emitted with decision, feedback, scores, and evidence
+  - `Events::EvaluationBlocked` — emitted when evaluator returns `:block`
+
+- **17 unit tests** for Evaluator — construction, rubric, all three verdicts, event
+  emission, custom rubrics, JSON parsing, and malformed response fallback.
+
+- **7 integration tests** for Session with evaluator — config (true/hash),
+  revise triggers improvement, revise skips reflector, block returns blocked
+  message, block emits event, evaluator-not-configured skips evaluation.
+
 ## [0.14.0] — 2026-07-23
 
 ### Added

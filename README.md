@@ -37,7 +37,88 @@ puts response
 | `Ask::Agent::Telemetry` | telemetry.rb | File-backed telemetry for error tracking |
 | `Ask::Agent::Reflector` | reflector.rb | Assistant response self-evaluation |
 | `Ask::Agent::MetaAgent` | meta_agent.rb | LLM-powered self-improvement from telemetry |
-| `Ask::Agent::Configuration` | configuration.rb | Global config: model, turns, concurrency |
+| `Ask::Agent::Evaluator` | evaluator.rb | Independent response evaluation with structured rubric — different model, isolated context |
+| `Ask::Agent::Configuration` | configuration.rb | Global config: model, turns, concurrency, evaluator |
+
+## Evaluator
+
+Independent response evaluation with generator/evaluator separation. The
+evaluator uses a **separate model** (different from the session's model) and an
+**isolated context** to judge the agent's output — preventing the anti-pattern
+of a model grading its own work.
+
+### Quick start
+
+```ruby
+session = Ask::Agent::Session.new(
+  model: "gpt-4o",
+  evaluator: { model: "claude-sonnet-4", goal: "Write an email validator" }
+)
+session.run("Write email validation")
+```
+
+### Verdicts
+
+| Verdict | Behavior |
+|---------|----------|
+| `:accept` | Output passes — falls through to reflection |
+| `:revise` | Evaluator provides feedback; session runs another turn with it injected |
+| `:block` | Output is fundamentally wrong — returns blocked message, emits `EvaluationBlocked` |
+
+### Configuration
+
+```ruby
+# Set a global default evaluator model
+Ask::Agent.configure do |c|
+  c.default_evaluator_model = "claude-sonnet-4"
+end
+
+# Then use evaluator: true to enable with the default
+session = Ask::Agent::Session.new(model: "gpt-4o", evaluator: true)
+```
+
+### Custom rubric
+
+```ruby
+evaluator = Ask::Agent::Evaluator.new(
+  model: "claude-sonnet-4",
+  rubric: [
+    Ask::Agent::Evaluator::Dimension.new(
+      name: "performance",
+      description: "Is the implementation efficient?",
+      weight: 2
+    )
+  ]
+)
+
+result = evaluator.evaluate(
+  goal: "Write an email validator",
+  response: agent_output
+)
+result.accept?  # => true/false
+result.scores   # => { performance: 2 }
+result.feedback # => "Add edge case for unicode characters"
+```
+
+### Events
+
+The evaluator emits its own events during evaluation:
+
+```ruby
+session.on_event do |event|
+  case event
+  when Ask::Agent::Events::EvaluationStart
+    puts "Evaluating against: #{event.dimensions.join(', ')}"
+  when Ask::Agent::Events::EvaluationDelta
+    print event.content
+  when Ask::Agent::Events::EvaluationEnd
+    puts "Decision: #{event.decision}"
+    puts "Scores: #{event.scores}"
+  when Ask::Agent::Events::EvaluationBlocked
+    puts "Blocked: #{event.feedback}"
+  end
+end
+```
 
 ## Events
 
