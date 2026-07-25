@@ -244,6 +244,7 @@ require_relative "agent/skills/load_skill_tool"
 require_relative "agent/scheduler"
 require_relative "agent/definition"
 require_relative "agent/cli"
+require_relative "agent/streaming"
 
 # Test helpers (loaded on demand)
 autoload :Test, "ask/agent/test"

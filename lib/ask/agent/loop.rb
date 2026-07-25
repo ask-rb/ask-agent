@@ -27,6 +27,10 @@ module Ask
             event_emitter.emit(Events::TextDelta.new(content: chunk.content))
           end
 
+          if chunk.respond_to?(:thinking) && chunk.thinking.to_s.strip.length > 0
+            event_emitter.emit(Events::ThinkingDelta.new(content: chunk.thinking))
+          end
+
           if chunk.tool_call?
             chunk.tool_calls.each do |id, tc|
               event_emitter.emit(Events::ToolCallDelta.new(

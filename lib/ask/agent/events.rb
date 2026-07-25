@@ -11,6 +11,7 @@ module Ask
 
       MessageStart = Data.define
       TextDelta = Data.define(:content)
+      ThinkingDelta = Data.define(:content)
       ToolCallDelta = Data.define(:name, :arguments, :id)
       MessageEnd = Data.define(:tool_calls)
 
