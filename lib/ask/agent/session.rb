@@ -21,7 +21,7 @@ module Ask
                      compactor: nil, hooks: {}, state: nil, persistence: nil,
                      id: nil, system_prompt: nil, parallel_tools: true,
                      reflector: nil, telemetry: true, meta_agent: nil,
-                     agent_dir: nil, evaluator: nil, **chat_options)
+                     agent_dir: nil, evaluator: nil, audit_log: nil, **chat_options)
         @id = id || SecureRandom.uuid
         @agent_dir = agent_dir
         @max_turns = max_turns
@@ -47,6 +47,7 @@ module Ask
         @tool_executor = ToolExecutor.new(max_retries: max_tool_retries, parallel: parallel_tools)
         @compactor = compactor ? build_compactor(compactor) : nil
         @hooks = Hooks.new(hooks)
+        @audit_log = build_audit_log(audit_log)
 
         @system_context = build_system_context(system_prompt)
         apply_system_context
@@ -333,6 +334,12 @@ module Ask
       end
 
       private
+
+      def build_audit_log(config)
+          config ||= Ask::Agent.configuration.audit_log
+          return nil unless config
+          Ask::Agent::Extensions::AuditLog.new(self, adapter: config)
+        end
 
       def build_chat(model, system_prompt, tools, **chat_options)
         if model.respond_to?(:ask)

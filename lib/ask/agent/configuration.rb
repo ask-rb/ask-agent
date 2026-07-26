@@ -5,7 +5,7 @@ module Ask
     class Configuration
       attr_accessor :default_model, :default_max_turns, :compactor_enabled,
                     :compactor_threshold, :parallel_tool_execution, :max_tool_retries,
-                    :prompt_caching, :default_evaluator_model
+                    :prompt_caching, :default_evaluator_model, :audit_log
 
       # @return [Middleware::Pipeline] the middleware pipeline for provider calls
       attr_reader :middleware
