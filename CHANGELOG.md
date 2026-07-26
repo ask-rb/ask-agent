@@ -1,4 +1,69 @@
-## [0.15.0] — 2026-07-24
+## [0.19.0] — 2026-07-26
+
+### Added
+
+- **`Ask::Agent::SubAgent.new("definition_name")` — create sub-agents from
+  filesystem definitions**. Passing a string looks up an agent definition
+  by name (same convention as `Ask::Agent.new("name")`), reading model,
+  tools, instructions, and other settings from the definition files.
+
+  ```ruby
+  # agents/web_search/agent.rb defines model, tools, instructions
+  search = Ask::Agent::SubAgent.new("web_search")
+
+  coordinator = Ask::Agent::Session.new(
+    model: "gpt-4o",
+    tools: [search, Ask::Tools::Shell::Bash]
+  )
+  ```
+
+- **VCR-based integration tests** for SubAgent. Real API calls are recorded
+  and replayed via VCR cassettes. Run with `OPENAI_API_KEY` set to record,
+  or without to replay existing cassettes.
+
+### Changed
+
+- `Ask::Agent::SubAgent.new(name:, ...)` now supports `provider:` parameter
+  for provider-specific sub-agents.
+
+## [0.18.0] — 2026-07-26
+
+### Added
+
+- **`Ask::Agent::SubAgent` — delegate tasks to a specialized sub-agent tool**.
+  A self-contained tool class that satisfies the tool duck type (`name`,
+  `description`, `params_schema`, `call`). When the coordinator LLM calls it,
+  a fresh sub-agent session runs independently with its own model, tools,
+  and instructions.
+
+  ```ruby
+  search = Ask::Agent::SubAgent.new(
+    name: "web_search",
+    description: "Search the web for current information",
+    model: "gpt-4o-mini",
+    tools: [MyApp::Tools::WebSearch],
+    system_prompt: "You are a research assistant."
+  )
+
+  coordinator = Ask::Agent::Session.new(
+    model: "gpt-4o",
+    tools: [search, Ask::Tools::Shell::Bash]
+  )
+
+  coordinator.run("What's the latest Rails release and how stable is it?")
+  ```
+
+### Removed
+
+- **`Ask::Agent.sub_agent_tool`** factory method — replaced by the
+  `Ask::Agent::SubAgent` class directly. The class IS the tool, no
+  factory or wrapper needed.
+
+## [0.17.0] — 2026-07-26
+
+### Added
+
+- Bump ask-tools dependency for `Ask::Tools::SubAgent` support
 
 ### Added
 

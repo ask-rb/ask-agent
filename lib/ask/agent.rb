@@ -245,6 +245,28 @@ require_relative "agent/scheduler"
 require_relative "agent/definition"
 require_relative "agent/cli"
 require_relative "agent/streaming"
+require_relative "agent/sub_agent"
 
 # Test helpers (loaded on demand)
 autoload :Test, "ask/agent/test"
+
+# Convenience method on the top-level Ask module.
+# Provides a quick one-shot chat without instantiating a Session directly.
+#
+#   Ask.chat("Hello")
+#   Ask.chat("Tell me about X", model: "gpt-4o")
+#   Ask.chat("Stream this") { |chunk| puts chunk.content }
+#
+module Ask
+  def self.chat(message, model: nil, system_prompt: nil, &block)
+    session = Agent::Session.new(
+      model: model || Agent.configuration.default_model,
+      system_prompt: system_prompt
+    )
+    if block
+      session.run(message, &block)
+    else
+      session.run(message)
+    end
+  end
+end
