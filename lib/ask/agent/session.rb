@@ -229,6 +229,10 @@ module Ask
           try_auto_meta_agent
         end
 
+        # Capture messages before emitting SessionEnd so event handlers
+        # can access agent.messages during the callback
+        @messages = @chat.messages.dup
+
         emit(Events::SessionEnd.new(
           result: response,
           turn_count: @turn_count,
@@ -237,7 +241,6 @@ module Ask
           output_tokens: @total_output_tokens,
           cost: @total_cost
         ))
-        @messages = @chat.messages.dup
 
         response
       end
