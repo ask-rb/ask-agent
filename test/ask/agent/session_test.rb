@@ -185,6 +185,21 @@ class SessionTest < Minitest::Test
     assert_instance_of Array, s.messages
   end
 
+  def test_messages_accessible_during_session_end_event
+    Ask::Agent::Chat.stubs(:new).returns(@chat_stub)
+    Ask::Agent::Loop.any_instance.stubs(:run_turn).returns("response")
+    s = Ask::Agent::Session.new(model: "gpt-4o", tools: [])
+    s.chat.add_message(role: :user, content: "hi")
+    s.chat.add_message(role: :assistant, content: "hello back")
+
+    messages_during_event = nil
+    s.on(Ask::Agent::Events::SessionEnd) { |_e| messages_during_event = s.messages }
+
+    s.run("hello")
+    refute_nil messages_during_event, "agent.messages should be populated during SessionEnd"
+    assert messages_during_event.any?, "agent.messages should contain messages"
+  end
+
   def test_run_resets_running_flag
     Ask::Agent::Chat.stubs(:new).returns(@chat_stub)
     Ask::Agent::Loop.any_instance.stubs(:run_turn).returns("response")
