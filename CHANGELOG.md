@@ -1,3 +1,70 @@
+## [0.22.0] — 2026-07-26
+
+### Added
+
+- **`Ask::Agent::Extensions::AuditLog` — event-driven audit logging with pluggable adapters**.
+  Subscribes to all session events and writes them to a configurable adapter.
+  Ships with two built-in adapters:
+
+  - **`FileAdapter`** — appends JSON lines to a file (development/quick-start)
+  - **`ActiveRecordWriter`** — writes to an `ask_audit_logs` table, auto-creates it
+    on first write using `CREATE TABLE IF NOT EXISTS`. Works with or without Rails
+    migrations.
+
+  ```ruby
+  # Global config (all sessions)
+  Ask::Agent.configure { |c| c.audit_log = { adapter: :active_record } }
+
+  # Per-session
+  session = Ask::Agent::Session.new(model: "gpt-4o", audit_log: { adapter: :file })
+  ```
+
+  Events logged: `session_start`, `session_end`, `turn_end`, `tool_execution_start`,
+  `tool_execution_end`, `error`, `max_turns_exceeded`, `loop_detected`,
+  `compaction_end`, `evaluation_blocked`.
+
+  Sensitive arguments (password, token, api_key, sql, etc.) are redacted automatically.
+
+- **12 tests** for AuditLog — adapter contract, event subscription, config integration,
+  sensitive arg redaction, legacy hook interface.
+
+### Changed
+
+- `Session#initialize` now accepts `audit_log:` parameter and falls back to
+  `Ask::Agent.configuration.audit_log`.
+- `Ask::Agent::Configuration#audit_log` — new accessor for global audit log config.
+
+## [0.21.0] — 2026-07-26
+
+- Version bump only.
+
+## [0.20.0] — 2026-07-26
+
+### Added
+
+- **`Events::ThinkingDelta`** — new event emitted when a chunk has thinking/reasoning
+  content. The loop already received chunks with `.thinking` data from providers like
+  DeepSeek and Claude, but it wasn't exposed as a dedicated event. Now it is.
+- **`Ask::Agent::Streaming`** — framework-agnostic SSE streaming module. Returns a
+  Rack-compatible Enumerator that yields SSE-formatted strings as the agent runs.
+  Works with any Rack server without requiring Rails or ActionController::Live.
+
+  Two modes:
+  - **Enumerable mode** (no block) — for Rack/Roda/Sinatra:
+    ```ruby
+    stream = Ask::Agent::Streaming.run(session, prompt)
+    [200, { "Content-Type" => "text/event-stream" }, stream]
+    ```
+  - **Block mode** — for Rails `ActionController::Live::SSE`:
+    ```ruby
+    Ask::Agent::Streaming.run(session, prompt) do |type, data|
+      sse.write(data, event: type)
+    end
+    ```
+
+- **19 tests** for Streaming + ThinkingDelta — Enumerator mode, block mode, custom
+  event maps, error handling, SSE line format, event structure.
+
 ## [0.19.0] — 2026-07-26
 
 ### Added
