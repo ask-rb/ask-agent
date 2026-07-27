@@ -68,7 +68,8 @@ module Ask
           metadata: {
             input_tokens: response_msg.input_tokens,
             output_tokens: response_msg.output_tokens,
-            cost: response_msg.cost
+            cost: response_msg.cost,
+            thinking: response_msg.thinking
           }.compact
         )
 
