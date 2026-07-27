@@ -235,6 +235,82 @@ class ChatTest < Minitest::Test
     assert_equal 1, @chat.messages.length
   end
 
+  # --- Defensive nil/each guards ---
+
+  # --- Defensive nil/each guards ---
+
+  def test_accumulate_tool_calls_with_nil_does_not_crash
+    calls_acc = {}
+    chunk = Ask::Chunk.new(content: ",", tool_calls: nil)
+    @chat.send(:accumulate_tool_calls, chunk, calls_acc)
+    assert_empty calls_acc
+  end
+
+  def test_accumulate_tool_calls_with_empty_array_does_not_crash
+    calls_acc = {}
+    chunk = Ask::Chunk.new(content: ",", tool_calls: [])
+    @chat.send(:accumulate_tool_calls, chunk, calls_acc)
+    assert_empty calls_acc
+  end
+
+  def test_accumulate_tool_calls_normal_case
+    calls_acc = {}
+    chunk = Ask::Chunk.new(content: ",", tool_calls: [{ index: 0, id: "call_1", name: "get_weather", arguments: "{}" }])
+    @chat.send(:accumulate_tool_calls, chunk, calls_acc)
+    assert_equal "call_1", calls_acc.dig(0, :id)
+    assert_equal "get_weather", calls_acc.dig(0, :name)
+  end
+
+  def test_build_tool_call_hash_with_nil_returns_empty_hash
+    result = @chat.send(:build_tool_call_hash, nil)
+    assert_equal({}, result)
+  end
+
+  def test_build_tool_call_hash_with_non_enumerable_returns_empty_hash
+    result = @chat.send(:build_tool_call_hash, "not an array")
+    assert_equal({}, result)
+  end
+
+  def test_build_tool_call_hash_with_valid_array
+    raw = [{ id: "call_1", name: "get_weather", arguments: "{}" }]
+    result = @chat.send(:build_tool_call_hash, raw)
+    assert result.key?("call_1")
+    assert_equal "get_weather", result["call_1"].name
+  end
+
+  def test_build_tool_call_hash_with_empty_array
+    result = @chat.send(:build_tool_call_hash, [])
+    assert_equal({}, result)
+  end
+
+  def test_build_tool_call_hash_with_array_of_malformed_entries
+    # Provider returned tool_calls as an array, but entries are not all Hashes
+    raw = [nil, "not-a-hash", { id: "call_1", name: "get_weather", arguments: "{}" }]
+    result = @chat.send(:build_tool_call_hash, raw)
+    assert_equal 1, result.size
+    assert_equal "get_weather", result["call_1"].name
+  end
+
+  # Streaming with nil tool calls should not crash
+  def test_streaming_with_nil_tool_calls_does_not_crash
+    provider = Object.new
+    provider.define_singleton_method(:chat) do |messages, model:, **options, &block|
+      block&.call(Ask::Chunk.new(content: "Hello", tool_calls: nil))
+      block&.call(Ask::Chunk.new(content: " World", tool_calls: nil))
+      stream = Ask::Stream.new
+      stream.finish!
+      stream
+    end
+
+    chat = Ask::Agent::Chat.new(model: "gpt-4o")
+    chat.define_singleton_method(:build_provider) { provider }
+
+    chunks = []
+    response = chat.ask("Hi") { |c| chunks << c }
+    assert_instance_of Ask::Agent::ResponseMessage, response
+    assert chunks.any?
+  end
+
   private
 
   def with_fake_chat(model, tool_calls: nil)

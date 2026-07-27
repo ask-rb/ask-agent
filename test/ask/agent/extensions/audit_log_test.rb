@@ -126,6 +126,41 @@ module Ask
           assert_nil log, "audit_log should be nil when not configured"
         end
 
+        # --- Full session run integration ---
+
+        def test_full_session_run_records_session_events
+          store = TestAdapter.new
+          Ask::Agent::Loop.any_instance.stubs(:run_turn).returns("mock response")
+
+          session = Ask::Agent::Session.new(
+            model: "gpt-4o", tools: [], max_turns: 1,
+            audit_log: { adapter: store }
+          )
+          session.run("test message")
+
+          types = store.entries.map { |e| e[:event_type] }
+          assert_includes types, "session_start", "session_start should be logged"
+          assert_includes types, "session_end", "session_end should be logged"
+          assert_operator store.entries.length, :>=, 2, "At least 2 events logged"
+        end
+
+        def test_full_session_run_with_tool_records_no_errors
+          store = TestAdapter.new
+          Ask::Agent::Loop.any_instance.stubs(:run_turn).returns("mock response")
+
+          tool = build_test_tool
+          session = Ask::Agent::Session.new(
+            model: "gpt-4o", tools: [tool], max_turns: 2,
+            audit_log: { adapter: store }
+          )
+          session.run("use the tool")
+
+          errors = store.entries.select { |e| e[:event_type] == "error" }
+          assert_empty errors, "No errors should be logged for a successful run"
+          assert store.entries.any? { |e| e[:event_type] == "session_end" },
+                 "session_end should be present"
+        end
+
         # --- Legacy hook interface ---
 
         def test_legacy_after_tool_call
@@ -160,6 +195,22 @@ module Ask
         end
 
         private
+
+        def build_test_tool
+          cls = Class.new(Ask::Tool) do
+            description "Test tool"
+            param :input, type: :string, desc: "Input"
+
+            def execute(input:)
+              Ask::Result.success("processed: #{input}")
+            end
+
+            def self.name
+              "TestTool"
+            end
+          end
+          cls.new
+        end
 
         def build_chat_stub
           model_stub = OpenStruct.new(id: "gpt-4o", to_s: "gpt-4o")

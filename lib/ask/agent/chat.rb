@@ -255,12 +255,17 @@ module Ask
       def accumulate_tool_calls(raw_chunk, calls_acc)
         return unless raw_chunk.tool_call?
 
-        raw_chunk.tool_calls.each do |tc|
-          idx = tc[:index] || 0
-          calls_acc[idx] ||= { id: tc[:id], name: tc[:name], arguments: +"" }
-          calls_acc[idx][:id] ||= tc[:id]
-          calls_acc[idx][:name] ||= tc[:name]
-          calls_acc[idx][:arguments] << tc[:arguments].to_s if tc[:arguments]
+        tool_calls = raw_chunk.tool_calls
+        return unless tool_calls.respond_to?(:each)
+
+        tool_calls.each do |tc|
+          next unless tc.respond_to?(:[])
+          idx = tc[:index] || tc["index"] || 0
+          calls_acc[idx] ||= { id: tc[:id] || tc["id"], name: tc[:name] || tc["name"], arguments: +"" }
+          calls_acc[idx][:id] ||= tc[:id] || tc["id"]
+          calls_acc[idx][:name] ||= tc[:name] || tc["name"]
+          arguments = tc[:arguments] || tc["arguments"]
+          calls_acc[idx][:arguments] << arguments.to_s if arguments
         end
       end
 
@@ -279,14 +284,21 @@ module Ask
 
       def build_tool_call_hash(raw_calls)
         hash = {}
+        return hash unless raw_calls.respond_to?(:each)
+
         raw_calls.each do |tc|
-          id = tc[:id] || tc["id"]
-          next unless id
-          hash[id] = ToolCallInfo.new(
-            id: id,
-            name: tc[:name] || tc["name"] || "",
-            arguments: tc[:arguments] || tc["arguments"] || ""
-          )
+          # Provider tool calls come as an Array of Hashes.
+          # A Hash argument (key-value pairs) means the caller passed
+          # a Hash instead of an Array — iterate values instead.
+          if tc.is_a?(Hash)
+            id = tc[:id] || tc["id"]
+            next unless id
+            hash[id] = ToolCallInfo.new(
+              id: id,
+              name: tc[:name] || tc["name"] || "",
+              arguments: tc[:arguments] || tc["arguments"] || ""
+            )
+          end
         end
         hash
       end
@@ -298,7 +310,7 @@ module Ask
           content: stream.accumulated_text,
           tool_calls: build_current_tool_calls(calls_acc),
           tool_results: {},
-          thinking: stream.chunks.filter_map(&:thinking).last,
+          thinking: stream.chunks.filter_map(&:thinking).join,
           input_tokens: tokens[:input],
           output_tokens: tokens[:output],
           cost: cost

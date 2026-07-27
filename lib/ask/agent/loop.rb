@@ -32,10 +32,13 @@ module Ask
           end
 
           if chunk.tool_call?
-            chunk.tool_calls.each do |id, tc|
-              event_emitter.emit(Events::ToolCallDelta.new(
-                name: tc.name, arguments: tc.arguments, id: tc.id
-              ))
+            calls = chunk.tool_calls
+            if calls.respond_to?(:each)
+              calls.each do |id, tc|
+                event_emitter.emit(Events::ToolCallDelta.new(
+                  name: tc.name, arguments: tc.arguments, id: tc.id
+                ))
+              end
             end
           end
         end
