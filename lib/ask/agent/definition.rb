@@ -27,10 +27,18 @@ module Ask
 
       class << self
         # All subclasses that have been loaded, in definition order.
-        attr_reader :subclasses
+        # Reads from Definition itself so intermediate base classes
+        # (e.g. ApplicationAgent) report the same registry.
+        def subclasses
+          Definition.instance_variable_get(:@subclasses) || []
+        end
 
         def inherited(subclass)
-          @subclasses << subclass
+          # Track on Definition itself, not self — inherited fires with the
+          # immediate parent as receiver, so an intermediate base class
+          # (e.g. an ApplicationAgent in a Rails app) would otherwise have a
+          # nil @subclasses ivar.
+          Definition.subclasses << subclass
           subclass.instance_variable_set(:@_config, { tools: [] })
 
           # Auto-detect the directory from the file where this class is defined

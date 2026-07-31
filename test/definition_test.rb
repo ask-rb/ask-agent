@@ -32,6 +32,15 @@ class DefinitionTest < Minitest::Test
     assert_includes Ask::Agent::Definition.subclasses, subclass
   end
 
+  def test_definition_tracks_subclasses_through_intermediate_base
+    intermediate = Class.new(Ask::Agent::Definition)
+    nested = Class.new(intermediate)
+
+    assert_includes Ask::Agent::Definition.subclasses, intermediate
+    assert_includes Ask::Agent::Definition.subclasses, nested
+    assert_includes intermediate.subclasses, nested
+  end
+
   def test_definition_model
     subclass = Class.new(Ask::Agent::Definition) { model "gpt-4o" }
     assert_equal "gpt-4o", subclass.model

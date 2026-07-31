@@ -2,6 +2,6 @@
 
 module Ask
   module Agent
-    VERSION = "0.24.0"
+    VERSION = "0.24.2"
   end
 end

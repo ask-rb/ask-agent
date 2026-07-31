@@ -1,3 +1,19 @@
+## [0.24.2] — 2026-07-30
+
+### Fixed
+
+- **Definitions discovered through an intermediate base class no longer
+  crash.** `Definition.inherited` appended to `@subclasses` on `self`, so
+  subclassing `Ask::Agent::Definition` through an application base class
+  (e.g. `class Agent < ApplicationAgent` in a Rails app) made the ivar nil
+  and raised `NoMethodError` on load. Tracking now reads the registry from
+  `Definition` itself, and `Definition.subclasses` reports the same list
+  regardless of receiver.
+
+- **Changelog for 0.24.1.** The subclass-chain fix shipped as 0.24.1
+  without a changelog entry; it is documented here and republished as
+  0.24.2 so the gem content includes it.
+
 ## [0.24.0] — 2026-07-30
 
 ### Changed
