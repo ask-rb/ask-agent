@@ -31,6 +31,44 @@ class ChatTest < Minitest::Test
     assert_equal "gpt-4o", chat.model_id
   end
 
+  def test_default_provider_config_is_used_when_no_override
+    previous = Ask::Agent.configuration.default_provider
+    Ask::Agent.configuration.default_provider = :anthropic
+
+    resolved = nil
+    fake_class = Class.new do
+      def initialize(config); end
+    end
+
+    Ask::Provider.stub(:resolve, ->(slug) { resolved = slug; fake_class }) do
+      chat = Ask::Agent::Chat.new(model: "gpt-4o")
+      chat.send(:provider)
+    end
+
+    assert_equal "anthropic", resolved.to_s
+  ensure
+    Ask::Agent.configuration.default_provider = previous
+  end
+
+  def test_per_chat_provider_override_wins_over_default
+    previous = Ask::Agent.configuration.default_provider
+    Ask::Agent.configuration.default_provider = :openai
+
+    resolved = nil
+    fake_class = Class.new do
+      def initialize(config); end
+    end
+
+    Ask::Provider.stub(:resolve, ->(slug) { resolved = slug; fake_class }) do
+      chat = Ask::Agent::Chat.new(model: "gpt-4o", provider: "anthropic")
+      chat.send(:provider)
+    end
+
+    assert_equal "anthropic", resolved.to_s
+  ensure
+    Ask::Agent.configuration.default_provider = previous
+  end
+
   def test_with_instructions_adds_system_prompt
     @chat.with_instructions("You are a helpful assistant.")
     assert_equal 1, @chat.messages.length

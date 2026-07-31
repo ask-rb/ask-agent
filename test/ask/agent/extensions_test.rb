@@ -121,17 +121,27 @@ class ExtensionsTest < Minitest::Test
   # --- AuditLog ---
 
   def test_audit_log_records_entries
-    log = Ask::Agent::Extensions::AuditLog.new(output: StringIO.new)
+    session = stub(id: "session_1", on_event: nil)
+    adapter = Object.new
+    entries = []
+    adapter.define_singleton_method(:write) { |entry| entries << entry }
+
+    log = Ask::Agent::Extensions::AuditLog.new(session, adapter: adapter)
     log.after_tool_call(@call, { result: "ok", duration_ms: 10 }, {})
-    assert_equal 1, log.entries.length
-    assert_equal "write", log.entries.first[:tool_name]
+
+    assert_equal 1, entries.length
+    assert_equal "tool_call", entries.first[:event_type]
+    assert_equal "write", entries.first[:data][:tool_name]
   end
 
   def test_audit_log_writes_to_path
     Dir.mktmpdir do |dir|
       log_path = File.join(dir, "audit.log")
-      log = Ask::Agent::Extensions::AuditLog.new(path: log_path)
+      session = stub(id: "session_1", on_event: nil)
+
+      log = Ask::Agent::Extensions::AuditLog.new(session, adapter: Ask::Agent::Extensions::AuditLog::FileAdapter.new(path: log_path))
       log.after_tool_call(@call, { result: "ok", duration_ms: 10 }, {})
+
       assert File.exist?(log_path)
       content = File.read(log_path)
       assert_includes content, "write"

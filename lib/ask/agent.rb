@@ -7,6 +7,7 @@ require "time"
 require "ask/skills"
 require "ask-llm-providers"
 require "ask-tools"
+require "ask-state-providers"
 
 module Ask
   module Agent

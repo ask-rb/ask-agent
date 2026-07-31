@@ -218,6 +218,7 @@ c.middleware.use :model_fallback,
 ```ruby
 Ask::Agent.configure do |c|
   c.default_model = "claude-sonnet-4"
+  c.default_provider = :anthropic
   c.default_max_turns = 50
   c.compactor_enabled = true
   c.compactor_threshold = 0.8
@@ -225,6 +226,12 @@ Ask::Agent.configure do |c|
   c.max_tool_retries = 3
 end
 ```
+
+`default_provider` pins which provider serves the default model when the
+model name doesn't uniquely identify one (for example, the same model id
+registered under multiple OpenAI-compatible providers). A `provider:`
+passed to `Session.new` or declared in an agent `Definition` always wins
+over the global default.
 
 ## Persistence
 

@@ -1,3 +1,14 @@
+## [0.23.0] — 2026-07-30
+
+### Added
+
+- **`Ask::Agent::Configuration#default_provider` — global default provider**.
+  Pins which provider serves the default model when the model id is
+  registered under multiple providers (e.g. the same model on several
+  OpenAI-compatible endpoints). `Chat#build_provider` falls back to the
+  global default before the model's own catalog entry. A per-chat
+  `provider:` override or a Definition-level `provider` always wins.
+
 ## [0.22.0] — 2026-07-26
 
 ### Added

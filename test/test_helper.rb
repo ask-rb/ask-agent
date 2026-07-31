@@ -18,6 +18,7 @@ $LOAD_PATH.unshift File.expand_path("../../ask-tools-shell/lib", __dir__)
 $LOAD_PATH.unshift File.expand_path("../../ask-schema/lib", __dir__)
 $LOAD_PATH.unshift File.expand_path("../../ask-skills/lib", __dir__)
 $LOAD_PATH.unshift File.expand_path("../../ask-llm-providers/lib", __dir__)
+$LOAD_PATH.unshift File.expand_path("../../ask-state-providers/lib", __dir__)
 
 require "ask/errors"
 require "ask/version"

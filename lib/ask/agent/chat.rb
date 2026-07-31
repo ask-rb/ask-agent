@@ -19,7 +19,7 @@ module Ask
     ToolCallInfo = Data.define(:id, :name, :arguments)
 
     ChatChunk = Data.define(:content, :tool_calls, :thinking, :input_tokens, :output_tokens) do
-      def tool_call? = !tool_calls.empty?
+      def tool_call? = !tool_calls.to_a.empty?
     end
 
     class Chat
@@ -116,7 +116,7 @@ module Ask
       end
 
       def build_provider
-        slug = @provider_override&.to_s || @model_info.provider
+        slug = @provider_override&.to_s || Ask::Agent.configuration.default_provider&.to_s || @model_info.provider
         klass = Ask::Provider.resolve(slug)
         klass.new(provider_config(slug))
       end
