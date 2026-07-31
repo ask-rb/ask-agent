@@ -117,16 +117,35 @@ module Ask
 
             require file
 
-            # Find the Definition subclass whose directory matches
-            match = Definition.subclasses.find { |klass|
-              klass._config[:dir] == dir
-            }
+            # Find the Definition subclass whose directory matches.
+            # Falls back to matching by conventional class name
+            # (<Name>::Agent) for agents re-opened from another location
+            # (e.g. same-named fixtures across test runs) — Ruby reopens
+            # an existing constant instead of redefining it, so the
+            # inherited hook doesn't fire a second time.
+            match = find_definition_for(dir, name)
 
             if match
               @registry[name] = [match, dir]
             end
           end
         end
+      end
+
+      # Find the Definition subclass for an agent directory.
+      #
+      # First tries an exact directory match (fresh definitions). When the
+      # class constant already exists — loaded from a different directory
+      # with the same agent name — re-points it at this directory so the
+      # returned definition is always current.
+      def find_definition_for(dir, name)
+        match = Definition.subclasses.find { |klass| klass._config[:dir] == dir }
+        return match if match
+
+        convention_name = name.split("_").map(&:capitalize).join + "::Agent"
+        match = Definition.subclasses.find { |klass| klass.name == convention_name }
+        match&._config&.[]=(:dir, dir)
+        match
       end
 
       def discover_shared_tools(base)

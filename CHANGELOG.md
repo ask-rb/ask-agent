@@ -1,3 +1,21 @@
+## [0.24.0] — 2026-07-30
+
+### Changed
+
+- **Agent class convention is now `<Name>::Agent`, not `<Name>Agent`.**
+  `agents/health_check/agent.rb` defines `module HealthCheck; class Agent <
+  Ask::Agent::Definition` — matching the ecosystem's `Xxx::Workflow` /
+  `Xxx::Create` naming. Directory-based discovery is unchanged.
+
+### Fixed
+
+- **Discovery re-points definitions when the class constant is re-opened.**
+  Requiring an `agent.rb` from a second location (same agent name, e.g. test
+  fixtures) re-opens the existing `<Name>::Agent` constant instead of
+  redefining it, so `inherited` never fires and the definition kept its old
+  directory. Discovery now falls back to matching by conventional class name
+  and re-points `_config[:dir]` at the current directory.
+
 ## [0.23.0] — 2026-07-30
 
 ### Added

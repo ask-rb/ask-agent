@@ -83,6 +83,41 @@ class DefinitionTest < Minitest::Test
     end
   end
 
+  def test_discovery_repairs_definition_dir_for_reopened_constant
+    Dir.mktmpdir do |tmpdir|
+      agents_dir = File.join(tmpdir, "agents")
+      agent_dir = File.join(agents_dir, "health_check")
+      FileUtils.mkdir_p(agent_dir)
+      File.write(File.join(agent_dir, "agent.rb"), <<~RUBY)
+        module HealthCheck
+          class Agent < Ask::Agent::Definition
+            model "gpt-4o"
+          end
+        end
+      RUBY
+
+      Ask::Agent.stubs(:default_agent_paths).returns([agents_dir])
+      Ask::Agent.rediscover!
+    end
+
+    # The same constant name now exists from another directory. Rediscovery
+    # re-opens it instead of redefining — the definition must be re-pointed
+    # at the fixture directory so it stays discoverable.
+    Ask::Agent.unstub(:default_agent_paths)
+    Ask::Agent.instance_variable_set(:@discovered, false)
+    Ask::Agent.instance_variable_set(:@registry, {})
+    $LOADED_FEATURES.delete_if { |f| f.start_with?(FIXTURES) }
+
+    Dir.chdir(FIXTURES) do
+      Ask::Agent.rediscover!
+      assert Ask::Agent.definitions.key?("health_check"),
+        "Should rediscover health_check after constant reopen: #{Ask::Agent.definitions.keys.inspect}"
+
+      _, dir = Ask::Agent.definitions["health_check"]
+      assert dir.end_with?("agents/health_check")
+    end
+  end
+
   def test_definition_has_directory
     Dir.chdir(FIXTURES) do
       Ask::Agent.rediscover!

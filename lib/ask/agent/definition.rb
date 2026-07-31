@@ -9,10 +9,12 @@ module Ask
     # Instructions load automatically from a sibling +instructions.md+.
     #
     # @example +agents/health_check/agent.rb+
-    #   class HealthCheckAgent < Ask::Agent::Definition
-    #     model "gpt-4o"
-    #     tools :bash, :read, :grep
-    #     schedule "every 5 minutes"
+    #   module HealthCheck
+    #     class Agent < Ask::Agent::Definition
+    #       model "gpt-4o"
+    #       tools :bash, :read, :grep
+    #       schedule "every 5 minutes"
+    #     end
     #   end
     #
     #   # agents/health_check/instructions.md is auto-loaded

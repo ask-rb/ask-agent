@@ -213,6 +213,42 @@ c.middleware.use :model_fallback,
   eligible_errors: [Ask::RateLimitError, Ask::ServerError]
 ```
 
+## Agents
+
+Declarative agents follow a file convention. Each agent lives in a
+directory under `agents/` (or `app/agents/` in Rails); the directory
+name is the agent name, the file `agent.rb` defines the agent as a
+`<Name>::Agent < Ask::Agent::Definition` subclass, and a sibling
+`instructions.md` is auto-loaded as the system prompt.
+
+```
+agents/
+└── health_check/          # agent name: "health_check"
+    ├── agent.rb           # module HealthCheck; class Agent < Ask::Agent::Definition
+    ├── instructions.md    # auto-loaded system prompt
+    └── tools/             # per-agent tools (referenced with `tools :name`)
+```
+
+```ruby
+# agents/health_check/agent.rb
+module HealthCheck
+  class Agent < Ask::Agent::Definition
+    model "gpt-4o"
+    tools :bash, :read, :grep
+  end
+end
+```
+
+Run it by name:
+
+```ruby
+agent = Ask::Agent.new("health_check")
+response = agent.run("Check server health")
+```
+
+Shared tools for all agents go in `agents/shared/tools/`. Per-agent
+skills go in `agents/<name>/skills/`, shared skills in `agents/shared/skills/`.
+
 ## Configuration
 
 ```ruby

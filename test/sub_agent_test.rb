@@ -72,8 +72,10 @@ class SubAgentTest < Minitest::Test
       FileUtils.mkdir_p(agent_dir)
 
       File.write(File.join(agent_dir, "agent.rb"), <<~RUBY)
-        class WebSearchAgent < Ask::Agent::Definition
-          model "gpt-4o-mini"
+        module WebSearch
+          class Agent < Ask::Agent::Definition
+            model "gpt-4o-mini"
+          end
         end
       RUBY
 
@@ -96,9 +98,11 @@ class SubAgentTest < Minitest::Test
       FileUtils.mkdir_p(agent_dir)
 
       File.write(File.join(agent_dir, "agent.rb"), <<~RUBY)
-        class HealthCheckAgent2 < Ask::Agent::Definition
-          model "gpt-4o"
-          tools :bash, :read
+        module HealthCheck
+          class Agent < Ask::Agent::Definition
+            model "gpt-4o"
+            tools :bash, :read
+          end
         end
       RUBY
 
