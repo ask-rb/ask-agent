@@ -1,3 +1,49 @@
+## [0.25.0] — 2026-08-02
+
+### Added
+
+- **Model-aware compaction reserve.** `Ask::Agent::Compactor` now derives
+  its context headroom from the model's declared `max_output_tokens`
+  (capped at 20,000) instead of a fixed 80% threshold. When the model
+  metadata is unavailable, a static 20,000-token reserve applies. A safety
+  floor clamps the reserve for tiny-window models so compaction can fire
+  usefully instead of triggering on every turn.
+
+  ```ruby
+  # Default: compact when tokens exceed context_window - reserve
+  compactor = Ask::Agent::Compactor.new
+
+  # Legacy behavior: compact at 80% of the window
+  compactor = Ask::Agent::Compactor.new(threshold: 0.8)
+
+  # Explicit headroom
+  compactor = Ask::Agent::Compactor.new(reserve_tokens: 5_000)
+  ```
+
+- **Token-aware recent tail.** `keep_recent_tokens:` preserves the last N
+  tokens of conversation verbatim (default 8,000) and summarizes only what's
+  older — recent-context fidelity depends on the active work, not message
+  counts. When not configured, the legacy fixed message-count tail
+  (`keep_count:`, default 8) is used for backward compatibility.
+
+- **Global compaction options** on `Ask::Agent.configure`:
+  `compactor_reserve_tokens` and `compactor_keep_recent_tokens` apply to all
+  sessions. `compactor_threshold` now defaults to `nil` (reserve mode).
+
+- **`Compactor#compact_threshold_tokens`** — public accessor for the token
+  count at which compaction triggers (window × threshold, or
+  window − reserve).
+
+### Fixed
+
+- **`microcompact!` no longer crashes on long tool results.** `Ask::Message`
+  is immutable — `content=` never existed. The method now rebuilds the
+  message in place via `map!`, preserving `tool_call_id` and metadata.
+
+### Changed
+
+- `Compactor#extract_summary` is now public.
+
 ## [0.24.2] — 2026-07-30
 
 ### Fixed

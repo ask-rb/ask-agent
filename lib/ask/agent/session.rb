@@ -364,9 +364,14 @@ module Ask
       end
 
       def build_compactor(config)
+        global = Ask::Agent.configuration
         compactor = Compactor.new(
-          threshold: config[:threshold] || 0.8,
-          strategy: config[:strategy] || :proactive
+          threshold: config[:threshold] || global.compactor_threshold,
+          strategy: config[:strategy] || :proactive,
+          reserve_tokens: config[:reserve_tokens] || global.compactor_reserve_tokens,
+          keep_recent_tokens: config[:keep_recent_tokens] || global.compactor_keep_recent_tokens,
+          keep_count: config[:keep_count],
+          min_messages: config[:min_messages]
         )
         compactor.chat = @chat
         compactor

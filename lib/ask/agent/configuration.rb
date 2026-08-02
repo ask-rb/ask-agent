@@ -6,7 +6,7 @@ module Ask
       attr_accessor :default_model, :default_provider, :default_max_turns,
                     :compactor_enabled, :compactor_threshold, :parallel_tool_execution,
                     :max_tool_retries, :prompt_caching, :default_evaluator_model,
-                    :audit_log
+                    :audit_log, :compactor_reserve_tokens, :compactor_keep_recent_tokens
 
       # @return [Middleware::Pipeline] the middleware pipeline for provider calls
       attr_reader :middleware
@@ -18,7 +18,9 @@ module Ask
         @default_model = "gpt-4o"
         @default_max_turns = 25
         @compactor_enabled = true
-        @compactor_threshold = 0.8
+        @compactor_threshold = nil
+        @compactor_reserve_tokens = nil
+        @compactor_keep_recent_tokens = nil
         @parallel_tool_execution = true
         @max_tool_retries = 3
         @prompt_caching = true

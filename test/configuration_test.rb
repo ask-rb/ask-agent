@@ -9,7 +9,9 @@ class ConfigurationTest < Minitest::Test
     assert_nil config.default_provider
     assert_equal 25, config.default_max_turns
     assert_equal true, config.compactor_enabled
-    assert_equal 0.8, config.compactor_threshold
+    assert_nil config.compactor_threshold
+    assert_nil config.compactor_reserve_tokens
+    assert_nil config.compactor_keep_recent_tokens
     assert_equal true, config.parallel_tool_execution
     assert_equal 3, config.max_tool_retries
   end
