@@ -1,8 +1,9 @@
 # ask-agent
 
-Agent runtime for the ask-rb ecosystem. The core agent loop: think → call tools → execute → feed back → repeat.
-
-Ported from `RubyLLM::Conductor` into the `Ask::Agent` namespace.
+Agent runtime for the ask-rb ecosystem. Runs the core agent loop: think, call
+tools, execute, feed results back, and repeat until the task is done. Built on
+ask-core, ask-state-providers, ask-llm-providers, ask-tools, ask-skills, and
+ask-instrumentation, and it powers the `askr` CLI.
 
 ## Installation
 
@@ -15,114 +16,12 @@ gem "ask-agent"
 ```ruby
 require "ask-agent"
 
-session = Ask::Agent::Session.new(
-  model: "gpt-4o",
-  tools: [Ask::Tools::Shell::Bash, Ask::Tools::Shell::Read]
-)
-
+session = Ask::Agent::Session.new(model: "gpt-4o", max_turns: 25)
 response = session.run("What files are in the current directory?")
 puts response
 ```
 
-## Components
-
-| Component | File | Purpose |
-|---|---|---|
-| `Ask::Agent::Session` | session.rb | Full agent loop — message → tool calls → results → follow-up |
-| `Ask::Agent::Loop` | loop.rb | Turn management, loop detection, max-turn guard |
-| `Ask::Agent::ToolExecutor` | tool_executor.rb | Parallel/sequential tool execution with retry and abort |
-| `Ask::Agent::Compactor` | compactor.rb | Context window management with proactive/overflow compaction |
-| `Ask::Agent::Hooks` | hooks.rb | Before/after tool lifecycle callbacks |
-| `Ask::Agent::Events` | events.rb | Data.define event types for streaming and monitoring |
-| `Ask::Agent::Telemetry` | telemetry.rb | File-backed telemetry for error tracking |
-| `Ask::Agent::Reflector` | reflector.rb | Assistant response self-evaluation |
-| `Ask::Agent::MetaAgent` | meta_agent.rb | LLM-powered self-improvement from telemetry |
-| `Ask::Agent::Evaluator` | evaluator.rb | Independent response evaluation with structured rubric — different model, isolated context |
-| `Ask::Agent::Configuration` | configuration.rb | Global config: model, turns, concurrency, evaluator |
-
-## Evaluator
-
-Independent response evaluation with generator/evaluator separation. The
-evaluator uses a **separate model** (different from the session's model) and an
-**isolated context** to judge the agent's output — preventing the anti-pattern
-of a model grading its own work.
-
-### Quick start
-
-```ruby
-session = Ask::Agent::Session.new(
-  model: "gpt-4o",
-  evaluator: { model: "claude-sonnet-4", goal: "Write an email validator" }
-)
-session.run("Write email validation")
-```
-
-### Verdicts
-
-| Verdict | Behavior |
-|---------|----------|
-| `:accept` | Output passes — falls through to reflection |
-| `:revise` | Evaluator provides feedback; session runs another turn with it injected |
-| `:block` | Output is fundamentally wrong — returns blocked message, emits `EvaluationBlocked` |
-
-### Configuration
-
-```ruby
-# Set a global default evaluator model
-Ask::Agent.configure do |c|
-  c.default_evaluator_model = "claude-sonnet-4"
-end
-
-# Then use evaluator: true to enable with the default
-session = Ask::Agent::Session.new(model: "gpt-4o", evaluator: true)
-```
-
-### Custom rubric
-
-```ruby
-evaluator = Ask::Agent::Evaluator.new(
-  model: "claude-sonnet-4",
-  rubric: [
-    Ask::Agent::Evaluator::Dimension.new(
-      name: "performance",
-      description: "Is the implementation efficient?",
-      weight: 2
-    )
-  ]
-)
-
-result = evaluator.evaluate(
-  goal: "Write an email validator",
-  response: agent_output
-)
-result.accept?  # => true/false
-result.scores   # => { performance: 2 }
-result.feedback # => "Add edge case for unicode characters"
-```
-
-### Events
-
-The evaluator emits its own events during evaluation:
-
-```ruby
-session.on_event do |event|
-  case event
-  when Ask::Agent::Events::EvaluationStart
-    puts "Evaluating against: #{event.dimensions.join(', ')}"
-  when Ask::Agent::Events::EvaluationDelta
-    print event.content
-  when Ask::Agent::Events::EvaluationEnd
-    puts "Decision: #{event.decision}"
-    puts "Scores: #{event.scores}"
-  when Ask::Agent::Events::EvaluationBlocked
-    puts "Blocked: #{event.feedback}"
-  end
-end
-```
-
-## Events
-
-Stream session execution in real-time:
+Stream execution in real time with events:
 
 ```ruby
 session.on_event do |event|
@@ -131,95 +30,17 @@ session.on_event do |event|
     print event.content
   when Ask::Agent::Events::ToolExecutionStart
     puts "\nRunning #{event.name}..."
-  when Ask::Agent::Events::ToolExecutionEnd
-    puts "  → #{event.duration_ms}ms #{event.is_error ? 'error' : 'ok'}"
   end
 end
 ```
 
-## Extensions
+## Declarative Agents
 
-Opt-in safety modules:
-
-- **Permissions** — Access control for tools. Supports named access modes (`:full_access`, `:read_only`, `:ask_before_changes`) or custom blocked-tool lists.
-- **RateLimiter** — Prevent runaway tool calls (configurable per-minute and per-turn limits)
-- **AuditLog** — Immutable, append-only log of every tool call
-
-```ruby
-extensions = [
-  Ask::Agent::Extensions::Permissions.new(mode: :read_only),
-  Ask::Agent::Extensions::RateLimiter.new(max_calls_per_minute: 30),
-  Ask::Agent::Extensions::AuditLog.new(path: "agent.log")
-]
-
-session = Ask::Agent::Session.new(
-  model: "gpt-4o",
-  tools: [...],
-  hooks: {
-    before_tool: extensions.map(&:method(:before_tool_call)),
-    after_tool: extensions.select { |e| e.respond_to?(:after_tool_call) }.map(&:method(:after_tool_call))
-  }
-)
-```
-
-## Middleware
-
-Wrapping LLM provider calls with cross-cutting behavior:
-
-- **RetryOnFailure** — Retry on rate limits and server errors with exponential backoff
-- **ModelFallback** — Switch to a fallback model+provider on transient errors
-- **LogCalls** — Log every LLM provider call
-- **DefaultSettings** — Inject default generation parameters
-
-```ruby
-Ask::Agent.configure do |c|
-  c.middleware.use :retry_on_failure, max_retries: 3
-  c.middleware.use :model_fallback, fallbacks: [
-    { model: "claude-sonnet-4",  provider: :anthropic },
-    { model: "gemini-2.0-flash", provider: :google }
-  ]
-  c.middleware.use :log_calls, logger: Rails.logger
-  c.middleware.use :default_settings, temperature: 0.7
-end
-```
-
-### ModelFallback
-
-When the primary LLM is overloaded or down, `ModelFallback` transparently switches to a backup model+provider. Credentials for each provider are resolved automatically.
-
-**Static fallbacks** — ordered list tried in sequence:
-```ruby
-c.middleware.use :model_fallback, fallbacks: [
-  { model: "claude-sonnet-4",  provider: :anthropic },
-  { model: "gemini-2.0-flash", provider: :google }
-]
-```
-
-**Dynamic fallbacks** — lambda that receives the error and request:
-```ruby
-c.middleware.use :model_fallback, fallbacks: ->(error, request) {
-  if request[:messages].sum { |m| m[:content].to_s.length } > 100_000
-    [{ model: "claude-sonnet-4", provider: :anthropic }]  # long-context
-  else
-    [{ model: "gpt-4o-mini", provider: :openai }]           # cheaper
-  end
-}
-```
-
-**Custom eligible errors** — by default rate limits, server errors, and service unavailable:
-```ruby
-c.middleware.use :model_fallback,
-  fallbacks: [{ model: "claude-sonnet-4", provider: :anthropic }],
-  eligible_errors: [Ask::RateLimitError, Ask::ServerError]
-```
-
-## Agents
-
-Declarative agents follow a file convention. Each agent lives in a
-directory under `agents/` (or `app/agents/` in Rails); the directory
-name is the agent name, the file `agent.rb` defines the agent as a
-`<Name>::Agent < Ask::Agent::Definition` subclass, and a sibling
-`instructions.md` is auto-loaded as the system prompt.
+Agents follow a file convention. Each agent lives in a directory under
+`agents/` (or `app/agents/` in Rails); the directory name is the agent name,
+the file `agent.rb` defines the agent as a `<Name>::Agent <
+Ask::Agent::Definition` subclass, and a sibling `instructions.md` is
+auto-loaded as the system prompt.
 
 ```
 agents/
@@ -246,10 +67,22 @@ agent = Ask::Agent.new("health_check")
 response = agent.run("Check server health")
 ```
 
-Shared tools for all agents go in `agents/shared/tools/`. Per-agent
-skills go in `agents/<name>/skills/`, shared skills in `agents/shared/skills/`.
+Shared tools for all agents go in `agents/shared/tools/`. Per-agent skills go
+in `agents/<name>/skills/`, shared skills in `agents/shared/skills/`.
 
-## Configuration
+## Essential API
+
+| Entry point | Purpose |
+|---|---|
+| `Ask::Agent::Session.new(model:, tools: [], max_turns: 25, ...)` | Full agent loop: message, tool calls, results, follow-up |
+| `session.run(message)` | Run the loop for one message |
+| `session.on_event { \|e\| }` | Stream `Ask::Agent::Events` (text deltas, tool execution, evaluation) |
+| `Ask::Agent.new("name")` | Build a session from a declarative agent definition |
+| `Ask.chat(message)` | One-shot chat without instantiating a Session |
+| `Ask::Agent.configure { \|c\| ... }` | Global defaults: model, provider, turns, compactor, middleware |
+| `askr` | CLI: `askr run <agent> [prompt]`, `askr list`, `askr schedule`, `askr new`, `askr skills` |
+
+### Configuration
 
 ```ruby
 Ask::Agent.configure do |c|
@@ -263,26 +96,23 @@ Ask::Agent.configure do |c|
 end
 ```
 
-`default_provider` pins which provider serves the default model when the
-model name doesn't uniquely identify one (for example, the same model id
-registered under multiple OpenAI-compatible providers). A `provider:`
-passed to `Session.new` or declared in an agent `Definition` always wins
-over the global default.
+`default_provider` pins which provider serves the default model when the model
+name doesn't uniquely identify one (for example, the same model id registered
+under multiple OpenAI-compatible providers). A `provider:` passed to
+`Session.new` or declared in an agent `Definition` always wins over the global
+default.
 
-## Persistence
+## Full documentation
 
-```ruby
-store = Ask::Agent::Persistence::InMemory.new
-session = Ask::Agent::Session.new(model: "gpt-4o", persistence: store)
-session.run("Hello")
-session.save  # persisted to store
-```
+The full ask-rb documentation lives at https://ask-rb.github.io/ask-docs.
+https://ask-rb.github.io/ask-docs/core/agent covers ask-agent in depth,
+including the evaluator, middleware, extensions, cost tracking, and
+persistence. API reference: https://ask-rb.github.io/ask-docs/reference/api.
 
 ## Development
 
-```bash
+bundle install
 bundle exec rake test
-```
 
 ## License
 
