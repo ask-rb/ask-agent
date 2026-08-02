@@ -1,3 +1,13 @@
+## [0.25.1] - 2026-08-02
+
+### Fixed
+
+- **Session passes resolved tool instances to Chat.** Tool classes passed
+  as `tools: [MyTool]` were resolved for the session but handed to the
+  underlying Chat unresolved, so `ToolDef.from_tool` used `Class#name`
+  and raised `Ask::InvalidToolDefinition` on the first run. Sessions now
+  resolve tools before building the Chat; classes and instances both work.
+
 ## [0.25.0] — 2026-08-02
 
 ### Added

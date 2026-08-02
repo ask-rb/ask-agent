@@ -41,8 +41,8 @@ module Ask
 
         @telemetry = telemetry.is_a?(Telemetry) ? telemetry : Telemetry.new(enabled: !!telemetry)
 
-        @chat = build_chat(model, system_prompt, tools, **chat_options)
         @tools = resolve_tools(tools)
+        @chat = build_chat(model, system_prompt, @tools, **chat_options)
         @loop = Loop.new(max_turns: max_turns)
         @tool_executor = ToolExecutor.new(max_retries: max_tool_retries, parallel: parallel_tools)
         @compactor = compactor ? build_compactor(compactor) : nil

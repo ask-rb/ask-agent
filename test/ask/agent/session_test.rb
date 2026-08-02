@@ -29,6 +29,18 @@ class SessionTest < Minitest::Test
     assert s.tools.any?
   end
 
+  def test_session_passes_resolved_tool_instances_to_chat
+    klass = Class.new(Ask::Tool) do
+      description "Test tool for session resolution"
+    end
+    session = Ask::Agent::Session.new(model: "gpt-4o", tools: [klass])
+    chat_tools = session.instance_variable_get(:@chat).instance_variable_get(:@tools)
+    assert chat_tools.any? { |t| t.instance_of?(klass) },
+           "Chat must receive resolved tool instances"
+    assert chat_tools.none? { |t| t.is_a?(Class) },
+           "Chat must not receive raw tool classes, got #{chat_tools.map(&:class).inspect}"
+  end
+
   def test_session_id_custom
     Ask::Agent::Chat.stubs(:new).returns(@chat_stub)
     s = Ask::Agent::Session.new(model: "gpt-4o", tools: [], id: "custom-id")
