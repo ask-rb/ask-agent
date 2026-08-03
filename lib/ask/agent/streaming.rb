@@ -82,6 +82,15 @@ module Ask
 
         private
 
+        # Truncate a string for telemetry without depending on ActiveSupport's
+        # String#truncate (which is not loaded by a bare `require "ask-agent"`).
+        def truncate(text, length)
+          s = text.to_s
+          return s if s.length <= length
+
+          "#{s[0, length - 3]}..."
+        end
+
         def run_with_block(session, prompt, mapping)
           errors = []
 
@@ -154,7 +163,7 @@ module Ask
           when Events::ToolExecutionStart
             { name: event.name, id: event.id, args: safe_args(event.arguments) }
           when Events::ToolExecutionUpdate
-            { id: event.id, partial_result: event.partial_result.to_s.truncate(200) }
+            { id: event.id, partial_result: truncate(event.partial_result, 200) }
           when Events::ToolExecutionEnd
             { name: event.name, id: event.id, duration_ms: event.duration_ms, is_error: event.is_error }
           when Events::SessionEnd

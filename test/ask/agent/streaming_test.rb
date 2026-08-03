@@ -235,6 +235,24 @@ class StreamingTest < Minitest::Test
            "Session should accept ThinkingDelta typed handlers"
   end
 
+  # --- Event serialization (no ActiveSupport dependency) ---
+
+  def test_tool_execution_update_serialization_truncates_partial_result
+    event = Ask::Agent::Events::ToolExecutionUpdate.new(id: "t1", name: "bash", partial_result: "x" * 300)
+    data = Ask::Agent::Streaming.send(:event_data, event)
+
+    assert_equal "t1", data[:id]
+    assert_operator data[:partial_result].length, :<=, 200
+    assert data[:partial_result].end_with?("...")
+  end
+
+  def test_tool_execution_update_serialization_keeps_short_results
+    event = Ask::Agent::Events::ToolExecutionUpdate.new(id: "t1", name: "bash", partial_result: "short")
+    data = Ask::Agent::Streaming.send(:event_data, event)
+
+    assert_equal "short", data[:partial_result]
+  end
+
   private
 
   def build_chat_stub

@@ -1,3 +1,14 @@
+## [0.25.2] - 2026-08-03
+
+### Fixed
+
+- **Streaming no longer depends on ActiveSupport's `String#truncate`.** The
+  SSE event serialization (streaming.rb) and the max-consecutive-tool-turns
+  summary (loop.rb) called `String#truncate`, which only exists when
+  ActiveSupport's core extensions are loaded — so a bare `require
+  "ask-agent"` raised `NoMethodError` as soon as a tool emitted a partial
+  result. Both call sites now use a plain-Ruby truncation helper.
+
 ## [0.25.1] - 2026-08-02
 
 ### Fixed

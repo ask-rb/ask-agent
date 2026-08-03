@@ -94,7 +94,7 @@ module Ask
         end
 
         if @consecutive_tool_turns >= @max_consecutive_tool_turns
-          summary = all_tool_results.map { |r| r[:message].to_s.truncate(80) }.first(2).join("; ")
+          summary = all_tool_results.map { |r| truncate(r[:message], 80) }.first(2).join("; ")
           return "Based on my investigation: #{summary}"
         end
 
@@ -136,6 +136,15 @@ module Ask
       end
 
       private
+
+      # Truncate a string for summaries without depending on ActiveSupport's
+      # String#truncate (which is not loaded by a bare `require "ask-agent"`).
+      def truncate(text, length)
+        s = text.to_s
+        return s if s.length <= length
+
+        "#{s[0, length - 3]}..."
+      end
 
       def loop_detected?(results)
         return false if results.empty?
