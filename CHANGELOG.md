@@ -1,3 +1,12 @@
+## [0.25.5] - 2026-08-05
+
+### Changed
+
+- **`load_skill` tool moved to ask-skills.** Sessions now inject
+  `Ask::Skills::LoadSkillTool` (ask-skills owns discovery, listing, and
+  loading). No API change for session users — `skills_disclosure false`
+  still opts out of the auto-injected tool.
+
 ## [0.25.4] - 2026-08-05
 
 ### Added

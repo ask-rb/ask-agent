@@ -362,7 +362,7 @@ module Ask
         # surface) or the test framework is loaded (test mode keeps tools
         # deterministic)
         if skills_disclosure_enabled?
-          resolved << Skills::LoadSkillTool.new(registry: @skills_registry) unless resolved.any? { |t| t.name == "load_skill" }
+          resolved << Ask::Skills::LoadSkillTool.new(registry: @skills_registry) unless resolved.any? { |t| t.name == "load_skill" }
         end
         resolved
       end
