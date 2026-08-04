@@ -2,6 +2,7 @@
 
 require "set"
 require "json"
+require "time"
 
 module Ask
   module Agent
