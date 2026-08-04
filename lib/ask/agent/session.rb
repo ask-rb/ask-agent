@@ -21,12 +21,14 @@ module Ask
                      compactor: nil, hooks: {}, state: nil, persistence: nil,
                      id: nil, system_prompt: nil, parallel_tools: true,
                      reflector: nil, telemetry: true, meta_agent: nil,
-                     agent_dir: nil, evaluator: nil, audit_log: nil, **chat_options)
+                     agent_dir: nil, evaluator: nil, audit_log: nil,
+                     skills_disclosure: true, **chat_options)
         @id = id || SecureRandom.uuid
         @agent_dir = agent_dir
         @max_turns = max_turns
         @max_tool_retries = max_tool_retries
         @parallel_tools = parallel_tools
+        @skills_disclosure = skills_disclosure
         @event_handlers = { all: [] }
         @running = false
         @deleted = false
@@ -356,11 +358,18 @@ module Ask
           tool.is_a?(Class) ? tool.new : tool
         end
         # Always include the load_skill tool for progressive skill disclosure,
-        # unless the test framework is loaded (test mode keeps tools deterministic)
-        unless defined?(Ask::Agent::Test) && Ask::Agent::Test
+        # unless disabled by the agent (voice agents keep a minimal tool
+        # surface) or the test framework is loaded (test mode keeps tools
+        # deterministic)
+        if skills_disclosure_enabled?
           resolved << Skills::LoadSkillTool.new(registry: @skills_registry) unless resolved.any? { |t| t.name == "load_skill" }
         end
         resolved
+      end
+
+      # Whether progressive skill disclosure is active for this session.
+      def skills_disclosure_enabled?
+        @skills_disclosure && !(defined?(Ask::Agent::Test) && Ask::Agent::Test)
       end
 
       def build_compactor(config)

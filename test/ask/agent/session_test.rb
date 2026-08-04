@@ -238,10 +238,10 @@ class SessionTest < Minitest::Test
   def test_no_tools_instructed_message
     Ask::Agent::Chat.stubs(:new).returns(@chat_stub)
     Ask::Agent::Loop.any_instance.stubs(:run_turn).returns("response")
-    s = Ask::Agent::Session.new(model: "gpt-4o", tools: [])
+    # skills_disclosure: false keeps the tool set deterministic here —
+    # regardless of whether Ask::Agent::Test happens to be loaded yet.
+    s = Ask::Agent::Session.new(model: "gpt-4o", tools: [], skills_disclosure: false)
     s.run("hello")
-    # In the test environment, Ask::Agent::Test is loaded which disables
-    # the auto-added load_skill tool, so tools remain empty.
     assert s.instance_variable_get(:@_no_tools_instructed)
   end
 
@@ -254,6 +254,27 @@ class SessionTest < Minitest::Test
     s.run("hello")
     assert_equal 0, s.reflection_count
   end
+
+
+  def test_skills_disclosure_enabled_adds_load_skill
+    Ask::Agent::Chat.stubs(:new).returns(@chat_stub)
+    s = Ask::Agent::Session.new(model: "gpt-4o", tools: [])
+    s.stub(:skills_disclosure_enabled?, true) do
+      tools = s.send(:resolve_tools, [])
+      assert tools.any? { |tool| tool.name == "load_skill" }
+    end
+  end
+
+  def test_skills_disclosure_false_skips_load_skill
+    Ask::Agent::Chat.stubs(:new).returns(@chat_stub)
+    s = Ask::Agent::Session.new(model: "gpt-4o", tools: [], skills_disclosure: false)
+    assert_equal false, s.instance_variable_get(:@skills_disclosure)
+    # Deterministic in any order: whether or not Ask::Agent::Test is loaded,
+    # a disclosure-disabled session never exposes load_skill.
+    tools = s.send(:resolve_tools, [])
+    assert tools.none? { |tool| tool.name == "load_skill" }
+  end
+
 
   # --- Skill ---
 

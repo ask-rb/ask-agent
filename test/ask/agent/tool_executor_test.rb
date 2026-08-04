@@ -196,3 +196,83 @@ class ToolExecutorHaltTest < Minitest::Test
     OpenStruct.new(name: name, id: id, arguments: arguments)
   end
 end
+
+class ThreadAwareTool
+  attr_reader :thread_ids, :seen_locals
+
+  def initialize
+    @thread_ids = []
+    @seen_locals = []
+  end
+
+  def name = "thread_tool"
+  def description = "Records the thread it ran on and any inherited locals"
+  def parameters = {}
+  def params_schema = nil
+  def provider_params = {}
+
+  def call(args, abort_controller: nil)
+    @thread_ids << Thread.current.object_id
+    @seen_locals << Thread.current[:inherited_probe]
+    { result: "done", is_error: false }
+  end
+end
+
+class ToolExecutorThreadingTest < Minitest::Test
+  def setup
+    @emitter = FakeEmitter.new
+    @hooks = Ask::Agent::Hooks.new
+  end
+
+  def tool_call(name, id: "call_1", arguments: "{}")
+    OpenStruct.new(name: name, id: id, arguments: arguments)
+  end
+
+  def test_sequential_execution_runs_in_the_caller_thread
+    executor = Ask::Agent::ToolExecutor.new(max_retries: 1, parallel: false)
+    tool = ThreadAwareTool.new
+    caller_thread = Thread.current.object_id
+
+    executor.execute({ "call_1" => tool_call("thread_tool") }, [tool],
+      hooks: @hooks, event_emitter: @emitter)
+
+    assert_equal [caller_thread], tool.thread_ids,
+      "sequential tools must run in the caller thread so per-request context (CurrentAttributes) is visible"
+  end
+
+  def test_parallel_execution_inherits_thread_locals
+    executor = Ask::Agent::ToolExecutor.new(max_retries: 1, parallel: true)
+    tool = ThreadAwareTool.new
+    Thread.current[:inherited_probe] = "hello-from-caller"
+
+    executor.execute({ "call_1" => tool_call("thread_tool") }, [tool],
+      hooks: @hooks, event_emitter: @emitter)
+  ensure
+    Thread.current[:inherited_probe] = nil
+
+    assert_equal ["hello-from-caller"], tool.seen_locals,
+      "parallel tool threads must inherit the caller's thread-local state"
+  end
+
+  def test_parallel_execution_runs_in_worker_threads
+    executor = Ask::Agent::ToolExecutor.new(max_retries: 1, parallel: true)
+    tool = ThreadAwareTool.new
+    caller_thread = Thread.current.object_id
+
+    executor.execute({ "call_1" => tool_call("thread_tool") }, [tool],
+      hooks: @hooks, event_emitter: @emitter)
+
+    refute_includes tool.thread_ids, caller_thread
+  end
+
+  def test_result_callback_is_invoked
+    executor = Ask::Agent::ToolExecutor.new(max_retries: 1, parallel: false)
+    called = []
+
+    executor.execute({ "call_1" => tool_call("fake_tool") }, [FakeTool.new],
+      hooks: @hooks, event_emitter: @emitter,
+      result_callback: ->(id, result) { called << [id, result[:status]] })
+
+    assert_equal [["call_1", "success"]], called
+  end
+end

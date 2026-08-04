@@ -19,7 +19,7 @@ module Ask
 
       attr_writer :telemetry
 
-      def execute(tool_calls, tools, hooks:, event_emitter:, session_id: nil)
+      def execute(tool_calls, tools, hooks:, event_emitter:, session_id: nil, result_callback: nil)
         return [] if tool_calls.empty?
 
         @total_executions = 0
@@ -27,9 +27,11 @@ module Ask
         sibling_abort = ToolAbortController.new
 
         if @parallel
-          execute_parallel(tool_calls, tools, hooks, event_emitter, sibling_abort)
+          execute_parallel(tool_calls, tools, hooks, event_emitter, sibling_abort, &result_callback)
         else
-          execute_sequential(tool_calls, tools, hooks, event_emitter, sibling_abort)
+          execute_sequential(tool_calls, tools, hooks, event_emitter, sibling_abort) do |id, result|
+            result_callback&.call(id, result)
+          end
         end
       end
 
@@ -38,8 +40,15 @@ module Ask
         mutex = Mutex.new
         results = {}
 
+        # Inherit the caller's thread-local state (Rails CurrentAttributes
+        # and similar frameworks store per-request context in Thread.current)
+        # so tools see the same context they would in a sequential run.
+        inherited_locals = {}
+        Thread.current.keys.each { |key| inherited_locals[key] = Thread.current[key] }
+
         tool_calls.each do |id, tool_call|
           threads << Thread.new do
+            inherited_locals.each { |key, value| Thread.current[key] = value }
             begin
               if sibling_abort.aborted?
                 mutex.synchronize { results[id] = aborted_result(tool_call) }
@@ -75,13 +84,14 @@ module Ask
         tool_calls.keys.map { |id| results[id] }.compact
       end
 
-      def execute_sequential(tool_calls, tools, hooks, event_emitter, sibling_abort)
+      def execute_sequential(tool_calls, tools, hooks, event_emitter, sibling_abort, &result_callback)
         results = []
         tool_calls.each do |id, tool_call|
           break if sibling_abort.aborted?
 
           result = execute_single_tool(tool_call, tools, hooks, event_emitter, sibling_abort)
           results << result
+          result_callback&.call(id, result)
           break if result[:critical_failure]
           break if result[:halted]
         end

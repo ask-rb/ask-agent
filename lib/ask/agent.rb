@@ -170,6 +170,7 @@ module Ask
         session_opts[:provider] = config[:provider] if config[:provider]
         session_opts[:max_turns] = config[:max_turns] if config[:max_turns]
         session_opts[:parallel_tools] = config[:parallel_tools] if config.key?(:parallel_tools)
+        session_opts[:skills_disclosure] = config[:skills_disclosure] if config.key?(:skills_disclosure)
 
         # Pass arbitrary session options
         if config[:options]

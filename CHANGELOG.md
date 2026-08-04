@@ -1,3 +1,33 @@
+## [0.25.4] - 2026-08-05
+
+### Added
+
+- **`skills_disclosure` opt-out for progressive skill disclosure.** Sessions
+  auto-inject the `load_skill` tool by default; agents with a fixed tool
+  surface (e.g. voice receptionists) can declare `skills_disclosure false`
+  in their definition (or pass `skills_disclosure: false` to
+  `Session.new`) to keep the tool payload minimal and deterministic.
+
+## [0.25.3] - 2026-08-04
+
+### Fixed
+
+- **Tools now respect the session's `parallel_tools` setting.** The agent
+  loop dispatched tool calls straight to `execute_parallel`, so tools always
+  ran in worker threads — even with `parallel_tools: false`. Sequential
+  sessions now run tools in the caller thread, which is what frameworks
+  like Rails rely on for per-request context (`CurrentAttributes` are
+  thread-local). The loop calls `ToolExecutor#execute`, which honors the
+  executor's `parallel` flag.
+- **Parallel tool threads inherit the caller's thread-local state.** When
+  tools do run in threads (parallel mode), `execute_parallel` copies the
+  caller's `Thread.current` locals into each worker thread first, so
+  per-request context (Rails `CurrentAttributes`, log tags, etc.) reaches
+  the tools instead of being nil.
+- `ToolExecutor#execute` accepts a `result_callback:` kwarg (invoked per
+  completed tool in both sequential and parallel modes); sequential
+  execution reports results through it too, matching parallel behavior.
+
 ## [0.25.2] - 2026-08-03
 
 ### Fixed

@@ -79,12 +79,17 @@ module Ask
 
         if user_tool_calls.any?
           # Execute user tool calls locally
-          user_results = tool_executor.execute_parallel(
-            user_tool_calls, tools, hooks, event_emitter, ToolAbortController.new
-          ) do |tool_call_id, result|
-            tc = user_tool_calls[tool_call_id]
-            chat.add_message(role: :tool, content: result[:message].to_s, tool_call_id: tool_call_id) if tc
-          end
+          # Respect the session's parallel_tools setting: parallel tools run
+          # in threads (with the caller's thread-local context inherited);
+          # sequential tools run in the caller thread so per-request context
+          # (e.g. Rails CurrentAttributes) is visible without any copying.
+          user_results = tool_executor.execute(
+            user_tool_calls, tools, hooks: hooks, event_emitter: event_emitter,
+            result_callback: lambda do |tool_call_id, result|
+              tc = user_tool_calls[tool_call_id]
+              chat.add_message(role: :tool, content: result[:message].to_s, tool_call_id: tool_call_id) if tc
+            end
+          )
           all_tool_results.concat(user_results)
         end
 

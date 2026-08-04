@@ -92,6 +92,18 @@ module Ask
           end
         end
 
+        # Set or get the progressive skill disclosure flag. When enabled
+        # (default), sessions include the load_skill tool so the model can
+        # pull in skills on demand. Voice/UI agents with a fixed tool
+        # surface can disable it to keep the payload minimal.
+        def skills_disclosure(value = :__no_value__)
+          if value == :__no_value__
+            _config.key?(:skills_disclosure) ? _config[:skills_disclosure] : true
+          else
+            _config[:skills_disclosure] = value
+          end
+        end
+
         # Set an arbitrary Session option. Accepts any key that
         # Ask::Agent::Session.new understands.
         #

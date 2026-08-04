@@ -48,6 +48,17 @@ class AgentDefinitionTest < Minitest::Test
     assert_equal true, cls.parallel_tools
   end
 
+
+  def test_skills_disclosure_setter
+    cls = Class.new(Ask::Agent::Definition)
+    cls.skills_disclosure false
+    assert_equal false, cls._config[:skills_disclosure]
+  end
+
+  def test_skills_disclosure_defaults_to_true
+    cls = Class.new(Ask::Agent::Definition)
+    assert_equal true, cls.skills_disclosure
+  end
   def test_tools_setter
     cls = Class.new(Ask::Agent::Definition)
     cls.tools :bash, :read
