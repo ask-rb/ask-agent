@@ -1,3 +1,10 @@
+## [0.26.1] - 2026-08-05
+
+### Added
+
+- **`Session#pending_tools?`** — true while any async tool is still running;
+  the voice seam uses it to tell the worker a completion is coming.
+
 ## [0.26.0] - 2026-08-05
 
 ### Added

@@ -336,6 +336,11 @@ module Ask
         nil
       end
 
+      # @return [Boolean] true while at least one async tool is running
+      def pending_tools?
+        @pending_mutex.synchronize { !@pending_tools.empty? }
+      end
+
       # Completes a pending (async) tool call from a background thread.
       #
       # Adds the tool result to the conversation and, when the session is
