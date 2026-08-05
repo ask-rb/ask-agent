@@ -1,3 +1,20 @@
+## [0.26.0] - 2026-08-05
+
+### Added
+
+- **Async tools (pending results).** A tool can return `Ask::Result.pending`
+  (ask-core 0.10.0) to hand the turn back with its interim message — the
+  agent voices it immediately and keeps talking — while the real work runs
+  in the background. The tool reads `Ask::Agent.current_session` and
+  `Ask::Agent.current_tool_call_id` (thread-locals set during the run and
+  the tool call) and completes later via
+  `Session#complete_pending_tool(tool_call_id:, result:)`, which adds the
+  tool message to the conversation and runs a follow-up turn so the agent
+  voices the answer. Completions that land mid-turn queue until the turn
+  ends. `ToolPending`/`ToolCompleted` events are emitted; the loop stops
+  after a pending call (no recursion, no loop detection, no premature
+  chat message).
+
 ## [0.25.6] - 2026-08-05
 
 ### Added

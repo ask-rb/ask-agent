@@ -91,14 +91,35 @@ module Ask
           # in threads (with the caller's thread-local context inherited);
           # sequential tools run in the caller thread so per-request context
           # (e.g. Rails CurrentAttributes) is visible without any copying.
+          # Pending (async) tool results skip the chat message — it is added
+          # when the background work completes.
           user_results = tool_executor.execute(
             user_tool_calls, tools, hooks: hooks, event_emitter: event_emitter,
             result_callback: lambda do |tool_call_id, result|
               tc = user_tool_calls[tool_call_id]
+              next unless tc
+              next if result[:status] == "pending"
+
               chat.add_message(role: :tool, content: result[:message].to_s, tool_call_id: tool_call_id) if tc
             end
           )
           all_tool_results.concat(user_results)
+        end
+
+        # Async tools: hand the turn back with the interim reply. The
+        # session registers the pending calls; completions arrive later via
+        # Session#complete_pending_tool.
+        pending_calls = all_tool_results.select { |r| r[:status] == "pending" }
+        unless pending_calls.empty?
+          pending_calls.each do |pending_result|
+            if event_emitter.respond_to?(:register_pending_tool)
+              event_emitter.register_pending_tool(
+                pending_result[:tool_call_id], pending_result
+              )
+            end
+          end
+          @consecutive_tool_turns = 0
+          return response.content.to_s
         end
 
         # Check loop detection

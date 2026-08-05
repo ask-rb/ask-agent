@@ -270,6 +270,33 @@ require_relative "agent/sub_agent"
 # Test helpers (loaded on demand)
 autoload :Test, "ask/agent/test"
 
+# The session running on this thread (set during Session#run). Async
+# tools read it to complete their background work:
+#
+#   session = Ask::Agent.current_session
+#   call_id = Ask::Agent.current_tool_call_id
+#   Thread.new { ...; session.complete_pending_tool(tool_call_id: call_id, result: {...}) }
+module Ask
+  module Agent
+    class << self
+      # @return [Ask::Agent::Session, nil] the session running on this thread
+      def current_session
+        Thread.current[:ask_agent_current_session]
+      end
+
+      # @param session [Ask::Agent::Session, nil]
+      def current_session=(session)
+        Thread.current[:ask_agent_current_session] = session
+      end
+
+      # @return [String, nil] the tool call id being executed on this thread
+      def current_tool_call_id
+        Thread.current[:ask_agent_tool_call_id]
+      end
+    end
+  end
+end
+
 # Convenience method on the top-level Ask module.
 # Provides a quick one-shot chat without instantiating a Session directly.
 #

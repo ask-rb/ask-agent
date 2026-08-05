@@ -81,7 +81,7 @@ module Ask
         end
 
         threads.each(&:join)
-        tool_calls.keys.map { |id| results[id] }.compact
+        tool_calls.keys.filter_map { |id| results[id]&.merge(tool_call_id: id) }
       end
 
       def execute_sequential(tool_calls, tools, hooks, event_emitter, sibling_abort, &result_callback)
@@ -90,7 +90,7 @@ module Ask
           break if sibling_abort.aborted?
 
           result = execute_single_tool(tool_call, tools, hooks, event_emitter, sibling_abort)
-          results << result
+          results << result.merge(tool_call_id: id)
           result_callback&.call(id, result)
           break if result[:critical_failure]
           break if result[:halted]
@@ -126,10 +126,13 @@ module Ask
         ))
 
         start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        Thread.current[:ask_agent_tool_call_id] = tool_call.id
         result = begin
           execute_with_retry(tool, tool_call.id, args, abort_controller)
         rescue Exception => e
           { result: e.message, is_error: true, error: e.class.name }
+        ensure
+          Thread.current[:ask_agent_tool_call_id] = nil
         end
         duration = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time) * 1000).to_i
         @total_executions += 1
@@ -171,10 +174,19 @@ module Ask
           result[:result].to_s
         end
 
+        inner = result[:result]
+        status = if result[:is_error] == true
+          "error"
+        elsif inner.respond_to?(:pending?) && inner.pending?
+          "pending"
+        else
+          "success"
+        end
+
         {
           tool_name: tool_call.name,
           message: message,
-          status: is_error ? "error" : "success",
+          status: status,
           result: result,
           critical_failure: critical,
           halted: halted
@@ -197,7 +209,13 @@ module Ask
 
       def try_call(tool, args, abort_controller = nil)
         result = tool.call(args, abort_controller: abort_controller)
-        is_error = result.respond_to?(:ok?) ? !result.ok? : false
+        is_error = if result.respond_to?(:pending?) && result.pending?
+          false  # async tool: work continues in the background
+        elsif result.respond_to?(:ok?)
+          !result.ok?
+        else
+          false
+        end
         hash = { result: result, is_error: is_error }
         if result.respond_to?(:metadata) && result.metadata&.dig(:halted)
           hash[:halted] = true

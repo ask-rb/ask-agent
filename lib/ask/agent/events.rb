@@ -16,6 +16,10 @@ module Ask
       MessageEnd = Data.define(:tool_calls)
 
       ToolExecutionStart = Data.define(:name, :arguments, :id)
+      # Emitted when a tool returns Ask::Result.pending (async work started).
+      ToolPending = Data.define(:name, :id)
+      # Emitted when a pending (async) tool's background work completes.
+      ToolCompleted = Data.define(:name, :id, :result)
       ToolExecutionUpdate = Data.define(:name, :id, :partial_result)
       ToolExecutionEnd = Data.define(:name, :id, :result, :is_error, :duration_ms)
 

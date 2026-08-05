@@ -33,6 +33,9 @@ module Ask
         @running = false
         @deleted = false
         @abort_requested = false
+        @pending_tools = {}
+        @pending_mutex = Mutex.new
+        @followup_pending = false
         @turn_count = 0
         @created_at = Time.now
         @_no_tools_instructed = false
@@ -85,14 +88,17 @@ module Ask
         end
       end
 
-      def run(message, tools: nil)
+      def run(message, tools: nil, reset: true)
         raise "Session deleted" if @deleted
         raise "Session already running" if @running
 
         @running = true
         @abort_requested = false
-        @turn_count = 0
-        @loop.reset!
+        Ask::Agent.current_session = self
+        if reset
+          @turn_count = 0
+          @loop.reset!
+        end
 
         emit(Events::SessionStart.new)
 
@@ -140,7 +146,16 @@ module Ask
           raise
         ensure
           @running = false
+          Ask::Agent.current_session = nil if Ask::Agent.current_session.equal?(self)
           persist! if @state
+          # A pending tool completed while this run was busy: voice the
+          # result now that the turn is over (one follow-up per completion).
+          follow_up = @pending_mutex.synchronize do
+            take = @followup_pending
+            @followup_pending = false
+            take
+          end
+          run_follow_up if follow_up
         end
 
         @tool_calls_made = @tool_executor.total_executions
@@ -307,6 +322,59 @@ module Ask
       end
 
       def abort_requested? = @abort_requested
+
+      # --- Async (pending) tools ---
+
+      # Registers a pending tool call (called by the loop when a tool
+      # returned Ask::Result.pending). The background work completes later
+      # via #complete_pending_tool.
+      def register_pending_tool(tool_call_id, result)
+        @pending_mutex.synchronize do
+          @pending_tools[tool_call_id] = result
+        end
+        emit(Events::ToolPending.new(name: result[:tool_name], id: tool_call_id))
+        nil
+      end
+
+      # Completes a pending (async) tool call from a background thread.
+      #
+      # Adds the tool result to the conversation and, when the session is
+      # idle, runs a follow-up turn so the agent voices the answer. If a
+      # turn is running, the follow-up fires as soon as it ends.
+      #
+      # @param tool_call_id [String] the original tool call id
+      # @param result [Hash] tool result hash ({message:, is_error:, ...})
+      # @return [Boolean] true if the completion was registered
+      def complete_pending_tool(tool_call_id:, result:)
+        follow_up = @pending_mutex.synchronize do
+          pending = @pending_tools.delete(tool_call_id)
+          return false unless pending
+
+          @chat.add_message(
+            role: :tool,
+            content: result[:message].to_s,
+            tool_call_id: tool_call_id
+          )
+          if @running
+            @followup_pending = true
+            false
+          else
+            true
+          end
+        end
+        emit(Events::ToolCompleted.new(name: result[:tool_name], id: tool_call_id, result: result))
+        run_follow_up if follow_up
+        true
+      end
+
+      # A follow-up turn driven by an async completion: runs the loop with
+      # the tool message already in the conversation, preserving turn state.
+      def run_follow_up
+        run("", reset: false)
+      rescue => e
+        emit(Events::Error.new(error: e.message, recoverable: false))
+        raise
+      end
 
       # Load a skill by name or file path.
       # Injects the skill's full instructions into the conversation as a system message.
