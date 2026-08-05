@@ -50,6 +50,14 @@ module Ask
         event_emitter.emit(Events::MessageEnd.new(tool_calls: response.tool_call?))
         @turn_count += 1
 
+        # Barge-in abort: stop as soon as the in-flight LLM call ends — no
+        # tool execution, no follow-up turns. The reply so far is returned
+        # (the caller has already moved on).
+        if aborted?(event_emitter)
+          @consecutive_tool_turns = 0
+          return response.content.to_s
+        end
+
         # Check if there are any tool calls (user-executed or provider-executed)
         has_tool_calls = response.tool_call? || (response.tool_results&.any? == true)
 
@@ -120,6 +128,9 @@ module Ask
 
         raise MaxTurnsExceeded if @turn_count >= @max_turns
 
+        # Aborted while tools ran? Skip the follow-up LLM call.
+        return response.content.to_s if aborted?(event_emitter)
+
         # Recursive call — LLM processes tool results
         run_turn(
           chat: chat,
@@ -141,6 +152,12 @@ module Ask
       end
 
       private
+
+      # Whether the session asked the loop to stop (barge-in). Emitters that
+      # don't support aborting (plain stubs) are treated as never aborted.
+      def aborted?(event_emitter)
+        event_emitter.respond_to?(:abort_requested?) && event_emitter.abort_requested?
+      end
 
       # Truncate a string for summaries without depending on ActiveSupport's
       # String#truncate (which is not loaded by a bare `require "ask-agent"`).

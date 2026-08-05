@@ -1,3 +1,14 @@
+## [0.25.6] - 2026-08-05
+
+### Added
+
+- **The agent loop honors `Session#abort` (barge-in).** Aborting a running
+  session now stops the loop as soon as the in-flight LLM call ends: no
+  tool execution, no follow-up turns, and recursion stops after a tool
+  turn. Voice callers who interrupt the agent get their new turn processed
+  immediately instead of waiting for the stale answer to finish. Emitters
+  without `abort_requested?` (plain stubs) are treated as never aborted.
+
 ## [0.25.5] - 2026-08-05
 
 ### Changed
