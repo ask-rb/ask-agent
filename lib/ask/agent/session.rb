@@ -555,6 +555,7 @@ module Ask
         policy = Ask::Agent::Policies::ApprovalPolicy.new(
           queue: queue,
           require_approval: policy_opts[:require_approval],
+          rules: policy_opts[:rules],
           tools: @tools
         )
 

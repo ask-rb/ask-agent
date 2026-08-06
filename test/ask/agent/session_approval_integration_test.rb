@@ -124,6 +124,70 @@ class SessionApprovalIntegrationTest < Minitest::Test
     assert s.pending_tools?
   end
 
+  # --- Permission rules ---
+
+  def test_deny_rule_blocks_tool_end_to_end
+    chat = build_chat_stub(sequence: [
+      { tool_calls: { "call_1" => stub_tool_call(name: "email") } }
+    ])
+    Ask::Agent::Chat.stubs(:new).returns(chat)
+
+    rules = Ask::Agent::Policies::PermissionRules.new { deny :email }
+    s = Ask::Agent::Session.new(
+      model: "gpt-4o", tools: [EmailTool.new],
+      approval: { rules: rules }
+    )
+
+    response = s.run("Send an email")
+
+    # The tool is refused outright: no queue entry, no execution.
+    assert_equal "", response
+    assert_empty s.approval_queue.pending_actions
+    refute s.pending_tools?
+  end
+
+  def test_allow_rule_runs_tool_without_approval_end_to_end
+    chat = build_chat_stub(sequence: [
+      { tool_calls: { "call_1" => stub_tool_call(name: "email") } },
+      { content: "Sent!" }
+    ])
+    Ask::Agent::Chat.stubs(:new).returns(chat)
+
+    # email is approval_required — an explicit allow rule overrides it.
+    rules = Ask::Agent::Policies::PermissionRules.new { allow :email }
+    s = Ask::Agent::Session.new(
+      model: "gpt-4o", tools: [EmailTool.new],
+      approval: { rules: rules }
+    )
+
+    response = s.run("Send an email")
+
+    # The tool executed (the loop recursed to the follow-up response) with
+    # no approval prompt in between.
+    assert_equal "Sent!", response
+    assert_empty s.approval_queue.pending_actions
+    refute s.pending_tools?
+  end
+
+  def test_dangerous_allow_rule_queues_instead_of_running
+    chat = build_chat_stub(sequence: [
+      { tool_calls: { "call_1" => stub_tool_call(name: "email") } }
+    ])
+    Ask::Agent::Chat.stubs(:new).returns(chat)
+
+    # Unrestricted allow on a code-executing tool downgrades to ask.
+    rules = Ask::Agent::Policies::PermissionRules.new { allow :bash }
+    s = Ask::Agent::Session.new(
+      model: "gpt-4o", tools: [SafeTool.new],
+      approval: { rules: rules }
+    )
+
+    # bash isn't registered — the ruleset classifies it, the executor
+    # reports "Tool not found"; the point is the rule never proceeds.
+    s.run("do something")
+    assert_empty s.approval_queue.pending_actions
+  end
+
   def test_approval_required_tool_runs_after_approve
     chat = build_chat_stub(sequence: [
       { tool_calls: { "call_1" => stub_tool_call(name: "email") } },

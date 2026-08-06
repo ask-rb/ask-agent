@@ -1,3 +1,24 @@
+## [0.31.0] — 2026-08-06
+
+### Added
+
+- **Permission rules — persisted allow/ask/deny patterns for tool calls.**
+  `Ask::Agent::Policies::PermissionRules` classifies every call before it
+  executes or prompts, so "approve once, remember the pattern" replaces
+  per-call prompting:
+  - DSL in declaration order (first match wins): `allow`, `ask`, `deny`
+    with a tool pattern (String, Symbol, Regexp, or `:all`) and an optional
+    argument pattern (Regexp, substring, or `nil` for any).
+  - Wire in via `Session.new(approval: { rules: rules })`. Rules take
+    precedence over a tool's own `approval_required` / `auto_approvable`
+    declarations: `:deny` blocks, `:allow` proceeds without the queue,
+    `:ask` queues regardless of auto-approvable.
+  - **Dangerous-rule guard**: an unrestricted `:allow` on a code-executing
+    tool (`bash`, `code`, `repl`, or `:all`) is downgraded to `:ask` unless
+    the ruleset is created with `auto_allow_dangerous: true` — "approve
+    once" can't become "approve anything". `dangerous_rules` reports which
+    rules were affected.
+
 ## [0.30.1] — 2026-08-06
 
 ### Fixed

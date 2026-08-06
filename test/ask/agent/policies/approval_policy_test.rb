@@ -98,6 +98,63 @@ class ApprovalPolicyTest < Minitest::Test
     assert_equal :proceed, policy.before_tool_call(tool_call("plain"), {})[:action]
   end
 
+  # --- permission rules ---
+
+  def build_rules(&block)
+    Ask::Agent::Policies::PermissionRules.new(&block)
+  end
+
+  def test_rules_deny_blocks
+    policy = build_policy(rules: build_rules { deny :plain })
+    result = policy.before_tool_call(tool_call("plain"), {})
+    assert_equal :block, result[:action]
+    assert_match(/Denied by permission rules/, result[:reason])
+    assert_empty @queue.pending_actions
+  end
+
+  def test_rules_allow_proceeds_without_queueing
+    policy = build_policy(rules: build_rules { allow :approval }) # beats approval_required
+    result = policy.before_tool_call(tool_call("approval"), {})
+    assert_equal :proceed, result[:action]
+    assert_empty @queue.pending_actions
+  end
+
+  def test_rules_allow_beats_auto_approvable_declaration
+    policy = build_policy(rules: build_rules { allow :auto })
+    assert_equal :proceed, policy.before_tool_call(tool_call("auto"), {})[:action]
+  end
+
+  def test_rules_ask_queues_without_auto_approve
+    policy = build_policy(rules: build_rules { ask :auto }) # beats auto_approvable
+    result = policy.before_tool_call(tool_call("auto"), {})
+    assert_equal :pending, result[:action]
+    action = @queue.pending_actions.first
+    refute action.auto_approvable
+  end
+
+  def test_rules_deny_beats_auto_approvable_declaration
+    policy = build_policy(rules: build_rules { deny :auto })
+    assert_equal :block, policy.before_tool_call(tool_call("auto"), {})[:action]
+  end
+
+  def test_dangerous_allow_rule_queues_as_pending
+    policy = build_policy(rules: build_rules { allow :bash })
+    result = policy.before_tool_call(tool_call("bash", arguments: "ls"), {})
+    assert_equal :pending, result[:action]
+  end
+
+  def test_restricted_allow_rule_proceeds
+    policy = build_policy(rules: build_rules { allow :bash, /^git status/ })
+    result = policy.before_tool_call(tool_call("bash", arguments: "git status"), {})
+    assert_equal :proceed, result[:action]
+  end
+
+  def test_no_matching_rule_falls_back_to_declarations
+    policy = build_policy(rules: build_rules { allow :bash, /^git/ })
+    # No rule matches "approval" → tool declaration applies.
+    assert_equal :pending, policy.before_tool_call(tool_call("approval"), {})[:action]
+  end
+
   # --- auto-approval dual signal ---
 
   def test_auto_approve_rule_enables_flagged_tool

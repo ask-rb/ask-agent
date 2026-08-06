@@ -35,6 +35,7 @@ module Ask
       autoload :RateLimiter, "ask/agent/policies/rate_limiter"
       autoload :AuditLog, "ask/agent/policies/audit_log"
       autoload :ApprovalPolicy, "ask/agent/policies/approval_policy"
+      autoload :PermissionRules, "ask/agent/policies/permission_rules"
     end
 
     autoload :ToolCallRepair, "ask/agent/tool_call_repair"

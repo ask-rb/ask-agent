@@ -32,13 +32,18 @@ module Ask
         #   rule-based classification on top of the tool's own declaration.
         #   Strings match tool names exactly, Regexps match against the name,
         #   and :all requires approval for every tool call.
+        # @param rules [Ask::Agent::Policies::PermissionRules, nil] persisted
+        #   allow/ask/deny patterns. Rules classify first and take precedence
+        #   over tool declarations: :deny blocks, :allow proceeds without the
+        #   queue, :ask queues regardless of auto-approvable.
         # @param tools [Array<Object>, nil] the session's resolved tool
         #   instances, used to read class-level declarations
         #   (`approval_required`, `auto_approvable`). When nil, only the
         #   rule-based lists classify calls.
-        def initialize(queue:, require_approval: nil, tools: nil)
+        def initialize(queue:, require_approval: nil, rules: nil, tools: nil)
           @queue = queue
           @require_approval = require_approval
+          @rules = rules
           @tools = Array(tools)
         end
 
@@ -46,12 +51,27 @@ module Ask
         #
         # @param tool_call [Ask::Agent::ToolCallInfo]
         # @param _context [Hash]
-        # @return [Hash] {action: :proceed} to run, or
-        #   {action: :pending, action_id:, reason:} to queue for approval
+        # @return [Hash] {action: :proceed} to run, {action: :pending,
+        #   action_id:, reason:} to queue for approval, or {action: :block,
+        #   reason:} to refuse
         def before_tool_call(tool_call, _context)
+          case @rules&.classify(tool_call.name, tool_call.arguments)
+          when :deny
+            return { action: :block, reason: "Denied by permission rules: '#{tool_call.name}'" }
+          when :allow
+            return { action: :proceed }
+          when :ask
+            return queue_for_approval(tool_call, auto_approvable: false)
+          end
+
           return { action: :proceed } unless approval_required?(tool_call.name)
 
-          auto_approvable = tool_auto_approvable?(tool_call.name)
+          queue_for_approval(tool_call, auto_approvable: tool_auto_approvable?(tool_call.name))
+        end
+
+        private
+
+        def queue_for_approval(tool_call, auto_approvable:)
           action_id = @queue.submit(
             tool_call_id: tool_call.id,
             tool_name: tool_call.name,
@@ -62,8 +82,6 @@ module Ask
 
           { action: :pending, action_id: action_id, reason: "Tool '#{tool_call.name}' requires approval" }
         end
-
-        private
 
         def approval_required?(tool_name)
           return true if @require_approval == :all
