@@ -1,3 +1,19 @@
+## [0.30.1] — 2026-08-06
+
+### Fixed
+
+- **Framework-injected tools are no longer persisted in session metadata.**
+  The built-in `load_skill` tool was saved alongside user tools and could
+  not be auto-instantiated on load (`LoadSkillTool` requires a registry), so
+  the previous 0.30.0 fix skipped it with a broad rescue. Persisted metadata
+  now contains only user-supplied tools (`persisted_tools`); `load_skill` is
+  re-added by `resolve_tools` per session with a proper registry.
+- **`Session.load` no longer swallows tool-restore failures silently.** The
+  safety net now rescues only `NameError` (renamed/removed classes) and
+  `ArgumentError` (constructors with required args), and warns with the
+  tool name instead of failing the whole load — genuine tool bugs surface
+  instead of disappearing.
+
 ## [0.30.0] — 2026-08-06
 
 ### Added

@@ -314,14 +314,16 @@ module Ask
         session = new(
           id: data[:id],
           model: data.dig(:metadata, :model),
-          # Instantiate saved tool classes defensively: tools that cannot be
-          # auto-constructed (e.g. the built-in LoadSkillTool, which needs a
-          # registry) are skipped — resolve_tools re-adds them with a proper
-          # registry. Callers can also pass their own `tools:` after load.
+          # Restore saved user tools by class name. Tools that cannot be
+          # restored — renamed/removed classes (NameError) or constructors
+          # with required args (ArgumentError) — are skipped with a warning
+          # instead of failing the whole load; resolve_tools re-adds the
+          # framework-injected load_skill tool with a proper registry.
           tools: data.dig(:metadata, :tools).to_a.filter_map do |name|
             begin
               name.constantize.new
-            rescue StandardError
+            rescue NameError, ArgumentError => e
+              warn "[ask-agent] Session.load skipped tool '#{name}': #{e.class}: #{e.message}"
               nil
             end
           end,
@@ -694,6 +696,15 @@ module Ask
         target.instance_variable_set(:@turn_count, data.dig(:metadata, :turn_count) || 0)
       end
 
+      # User-supplied tools only. Framework-injected tools (the built-in
+      # load_skill tool) are re-created by resolve_tools on every session, so
+      # persisting them would leak framework internals into user data — and
+      # they cannot be auto-instantiated on load anyway (LoadSkillTool needs
+      # a registry).
+      def persisted_tools
+        @tools.reject { |t| t.is_a?(Ask::Skills::LoadSkillTool) }
+      end
+
       def persist!
         payload = {
           id: @id,
@@ -707,7 +718,7 @@ module Ask
           },
           metadata: {
             model: @chat.model.respond_to?(:id) ? @chat.model.id : @chat.model,
-            tools: @tools.map { |t| t.class.name },
+            tools: persisted_tools.map { |t| t.class.name },
             max_turns: @max_turns,
             turn_count: @turn_count,
             created_at: @created_at.iso8601,

@@ -24,6 +24,16 @@ module Ask
         end
       end
 
+      # Tool that cannot be auto-instantiated (requires a constructor kwarg).
+      class RegistryTool < Ask::Tool
+        def initialize(registry:)
+          @registry = registry
+          super()
+        end
+
+        def execute(*) = Ask::Result.ok(data: 1)
+      end
+
       # Durable adapter backed by a Hash.
       class HashAdapter
         attr_reader :data
@@ -271,6 +281,74 @@ module Ask
         assert_equal [1, 2], restored.checkpoint_history
         restored.rollback!(seq: 1)
         assert_equal %w[q1 a1], restored.chat.messages.map(&:content)
+      end
+
+      # -----------------------------------------------------------------
+      # Tool restore
+      # -----------------------------------------------------------------
+
+      def test_persist_excludes_framework_injected_load_skill_tool
+        add_turn([{ role: :user, content: "q1" }])
+
+        tools = @adapter.get(@session.id)[:metadata][:tools]
+        assert_equal ["Ask::Agent::CheckpointTest::CheckpointProbe"], tools
+
+        # The user tool is restored by class name; framework-injected tools
+        # are never persisted (resolve_tools re-adds load_skill per-session).
+        restored = Session.load(@session.id, adapter: @adapter)
+        assert_includes restored.instance_variable_get(:@tools).map(&:name), "checkpoint_probe"
+      end
+
+      def test_load_skips_and_warns_on_unrestorable_tool_class
+        store = HashAdapter.new
+        store.set("s1", {
+          id: "s1",
+          messages: [{ role: "user", content: "hi" }],
+          metadata: {
+            model: "gpt-4o",
+            tools: ["No::Such::Tool", "Ask::Agent::CheckpointTest::CheckpointProbe"],
+            max_turns: 5, turn_count: 1,
+            created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z"
+          }
+        })
+
+        restored = nil
+        _out, err = capture_io do
+          restored = Session.load("s1", adapter: store)
+        end
+
+        assert_match(/skipped tool 'No::Such::Tool'/, err)
+        refute_nil restored
+        names = restored.instance_variable_get(:@tools).map(&:name)
+        assert_includes names, "checkpoint_probe"
+        refute_includes names, "no_such_tool"
+      end
+
+      def test_load_skips_and_warns_on_tool_with_required_constructor_args
+        store = HashAdapter.new
+        store.set("s2", {
+          id: "s2",
+          messages: [{ role: "user", content: "hi" }],
+          metadata: {
+            model: "gpt-4o",
+            tools: ["Ask::Agent::CheckpointTest::RegistryTool"],
+            max_turns: 5, turn_count: 1,
+            created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z"
+          }
+        })
+
+        restored = nil
+        _out, err = capture_io do
+          restored = Session.load("s2", adapter: store)
+        end
+
+        assert_match(/skipped tool 'Ask::Agent::CheckpointTest::RegistryTool'/, err)
+        refute_nil restored
+        # No user tools survived; only framework-injected tools (if skills
+        # disclosure is active in this context) remain.
+        names = restored.instance_variable_get(:@tools).map(&:name)
+        refute_includes names, "registry_tool"
+        refute_includes names, "registry"
       end
 
       def test_delete_removes_session_and_checkpoints
