@@ -353,13 +353,23 @@ module Ask
       def accumulated_tokens(stream)
         input = 0
         output = 0
+        content_chunks = 0
         stream.chunks.each do |chunk|
           if chunk.usage
-            input = chunk.usage[:input_tokens] || chunk.usage["input_tokens"] || input
-            output = chunk.usage[:output_tokens] || chunk.usage["output_tokens"] || output
+            # Streams carry OpenAI-style prompt_tokens/completion_tokens
+            # (some providers also send input_tokens/output_tokens); reading
+            # only the latter reported 0 in / ~1 out for every streamed call.
+            input = chunk.usage[:input_tokens] || chunk.usage["input_tokens"] ||
+              chunk.usage[:prompt_tokens] || chunk.usage["prompt_tokens"] || input
+            output = chunk.usage[:output_tokens] || chunk.usage["output_tokens"] ||
+              chunk.usage[:completion_tokens] || chunk.usage["completion_tokens"] || output
           end
-          output += 1 if chunk.content.to_s.length > 0
+          content_chunks += 1 if chunk.content.to_s.length > 0
         end
+        # No usage in the stream at all: approximate output as content
+        # chunks rather than reporting nothing. Never mixed with real
+        # usage (that would double count).
+        output = content_chunks if input.zero? && output.zero? && content_chunks.positive?
         { input: input, output: output }
       end
 

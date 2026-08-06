@@ -190,6 +190,48 @@ class ChatTest < Minitest::Test
     end
   end
 
+  def test_streaming_usage_counts_real_tokens
+    # deepseek/OpenAI streams carry prompt_tokens/completion_tokens on the
+    # final chunk; the old code read only input/output_tokens and reported
+    # 0 in / ~1 out for every streamed call (and double-counted content
+    # chunks on top).
+    stream = Ask::Stream.new
+    stream.add(Ask::Chunk.new(content: "Hello "))
+    stream.add(Ask::Chunk.new(content: "World"))
+    stream.add(Ask::Chunk.new(
+      content: "", finish_reason: "stop",
+      usage: {"prompt_tokens" => 12, "completion_tokens" => 5}
+    ))
+    stream.finish!
+    provider = Object.new
+    provider.define_singleton_method(:chat) do |messages, model:, **options, &block|
+      stream
+    end
+
+    chat = Ask::Agent::Chat.new(model: "gpt-4o")
+    stub_chat_provider(chat, provider)
+    response = chat.ask("Hi") { |_chunk| }
+    assert_equal 12, response.input_tokens
+    assert_equal 5, response.output_tokens
+  end
+
+  def test_streaming_without_usage_falls_back_to_content_chunks
+    stream = Ask::Stream.new
+    stream.add(Ask::Chunk.new(content: "Hello "))
+    stream.add(Ask::Chunk.new(content: "World"))
+    stream.finish!
+    provider = Object.new
+    provider.define_singleton_method(:chat) do |messages, model:, **options, &block|
+      stream
+    end
+
+    chat = Ask::Agent::Chat.new(model: "gpt-4o")
+    stub_chat_provider(chat, provider)
+    response = chat.ask("Hi") { |_chunk| }
+    assert_equal 0, response.input_tokens
+    assert_equal 2, response.output_tokens
+  end
+
   def test_ask_with_tool_calls
     tool_calls = [{ id: "call_1", type: "function", name: "get_weather", arguments: '{"city":"London"}' }]
     with_fake_chat("gpt-4o", tool_calls: tool_calls) do |chat|

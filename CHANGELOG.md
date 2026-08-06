@@ -1,3 +1,16 @@
+## [0.29.1] — 2026-08-06
+
+### Fixed
+
+- **Streamed token accounting now counts real tokens.** Stream usage arrives
+  as OpenAI-style `prompt_tokens`/`completion_tokens` (deepseek, openai,
+  most OpenAI-compatible providers), but `accumulated_tokens` read only
+  `input_tokens`/`output_tokens` — every streamed call reported 0 input and
+  ~1 output token (the content-chunk fallback), so token billing, cost
+  calculation, and usage metrics under-counted by orders of magnitude. Both
+  key shapes are read now, and the content-chunk fallback applies only when
+  the stream carries no usage at all (no double counting).
+
 ## [0.29.0] — 2026-08-06
 
 ### Added
