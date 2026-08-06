@@ -38,6 +38,7 @@ module Ask
     end
 
     autoload :ToolCallRepair, "ask/agent/tool_call_repair"
+    autoload :CheckpointStore, "ask/agent/checkpoint_store"
 
     module Middleware
       autoload :Base, "ask/agent/middleware/base"

@@ -1,3 +1,36 @@
+## [0.30.0] — 2026-08-06
+
+### Added
+
+- **Session checkpoints: fork, rollback, resume.** Versioned, durable
+  checkpoints on any state adapter. Enable with
+  `Session.new(state: store, checkpoints: true)` — every turn is snapshotted
+  under a sequential key, and the session gains time travel:
+  - **`Session#rollback!(seq: / turn:)`** — rewind messages and turn count
+    to an earlier checkpoint. Later checkpoints are kept, so the session
+    can roll forward again. The legacy blob stays consistent.
+  - **`Session#fork(at_seq: / at_turn:)`** — a new session (new id, same
+    model/tools) whose history is everything up to that point, backed by
+    its own checkpoint chain; continue the branch with `run`.
+  - **`Session#checkpoint_history` / `Session#load_checkpoint(seq:)`** —
+    inspect the timeline. `Session.load` re-enables checkpointing
+    automatically when the stored session has checkpoints.
+  - `Ask::Agent::CheckpointStore` — the store itself, usable standalone.
+    It needs only the minimal KV contract (`get`/`set`/`delete`), so it
+    works with every state provider (SQLite, Redis, Postgres, MySQL) and
+    custom adapters — no list primitives required, no provider mandated.
+  - `Events::SessionRolledBack` / `Events::SessionForked` fire on rollback
+    and fork. `Session#delete` cleans up checkpoint keys too.
+
+### Fixed
+
+- **`Session.load` could not restore sessions saved with tools.** The
+  built-in `LoadSkillTool` (auto-added to every session) cannot be
+  instantiated without a registry, so any saved session with tools failed
+  to load with `ArgumentError: missing keyword: :registry`. Load now
+  instantiates saved tool classes defensively — un-instantiable classes are
+  skipped and re-added by `resolve_tools` with a proper registry.
+
 ## [0.29.1] — 2026-08-06
 
 ### Fixed

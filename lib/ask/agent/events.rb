@@ -29,6 +29,11 @@ module Ask
       CompactionStart = Data.define(:tokens_before, :reason)
       CompactionEnd = Data.define(:tokens_before, :tokens_after, :summary)
 
+      # Emitted when a session was rewound to an earlier checkpoint.
+      SessionRolledBack = Data.define(:session_id, :seq, :turn_count)
+      # Emitted when a session was forked from a checkpoint.
+      SessionForked = Data.define(:session_id, :forked_id, :seq)
+
       LoopDetected = Data.define(:tool_name, :repeated_count)
       MaxTurnsExceeded = Data.define(:max_turns)
 

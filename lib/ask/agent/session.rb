@@ -23,7 +23,7 @@ module Ask
                      reflector: nil, telemetry: true, meta_agent: nil,
                      agent_dir: nil, evaluator: nil, audit_log: nil,
                      skills_disclosure: true, approval: nil,
-                     tool_call_repair: nil, **chat_options)
+                     tool_call_repair: nil, checkpoints: false, **chat_options)
         @id = id || SecureRandom.uuid
         @agent_dir = agent_dir
         @max_turns = max_turns
@@ -61,6 +61,11 @@ module Ask
         apply_system_context
 
         @state = state || persistence
+        if checkpoints && !@state
+          raise ArgumentError, "checkpoints: requires a state: adapter"
+        end
+        @checkpoints = !!checkpoints
+        @checkpoint_store = CheckpointStore.new(@state) if @checkpoints
 
         reflector_opts = reflector.is_a?(Hash) ? reflector : {}
         @reflector = if reflector
@@ -309,8 +314,21 @@ module Ask
         session = new(
           id: data[:id],
           model: data.dig(:metadata, :model),
-          tools: data.dig(:metadata, :tools)&.map(&:constantize) || [],
-          state: adapter
+          # Instantiate saved tool classes defensively: tools that cannot be
+          # auto-constructed (e.g. the built-in LoadSkillTool, which needs a
+          # registry) are skipped — resolve_tools re-adds them with a proper
+          # registry. Callers can also pass their own `tools:` after load.
+          tools: data.dig(:metadata, :tools).to_a.filter_map do |name|
+            begin
+              name.constantize.new
+            rescue StandardError
+              nil
+            end
+          end,
+          state: adapter,
+          # Checkpointing is restored automatically when the session has
+          # checkpoints in the store.
+          checkpoints: !adapter.get("#{id}#{CheckpointStore::HEAD_KEY}").nil?
         )
 
 	        data[:messages].each do |msg|
@@ -327,6 +345,7 @@ module Ask
 
       def delete
         @deleted = true
+        @checkpoint_store&.delete(@id)
         @state&.delete(@id)
       end
 
@@ -335,6 +354,81 @@ module Ask
       end
 
       def abort_requested? = @abort_requested
+
+      # --- Checkpoints (fork, rollback, resume) ---
+
+      # @return [Array<Integer>] checkpoint seqs, oldest first
+      # @raise [RuntimeError] when checkpointing is not enabled
+      def checkpoint_history
+        require_checkpoints!
+        @checkpoint_store.history(@id)
+      end
+
+      # Load a checkpoint's snapshot.
+      #
+      # @param seq [Integer, nil] checkpoint seq; defaults to the head
+      # @return [Hash, nil] the snapshot with symbol keys
+      # @raise [RuntimeError] when checkpointing is not enabled
+      def load_checkpoint(seq: nil)
+        require_checkpoints!
+        data = @checkpoint_store.load(@id, seq: seq)
+        data && self.class.deep_symbolize_keys(data)
+      end
+
+      # Rewind the session to an earlier checkpoint: messages and turn count
+      # are restored from the snapshot, and the store's head moves back.
+      # Later checkpoints are kept, so the session can roll forward again.
+      #
+      # @param seq [Integer, nil] checkpoint seq (xor +turn:)
+      # @param turn [Integer, nil] roll back to the last checkpoint whose
+      #   turn count equals +turn+ (xor +seq:)
+      # @return [self]
+      # @raise [ArgumentError] when the checkpoint does not exist
+      # @raise [RuntimeError] when checkpointing is not enabled or the
+      #   session is running
+      def rollback!(seq: nil, turn: nil)
+        require_checkpoints!
+        raise "cannot roll back a running session" if @running
+
+        seq = resolve_checkpoint_seq(seq, turn)
+        data = load_checkpoint(seq: seq)
+        raise ArgumentError, "no checkpoint #{seq}" unless data
+
+        @checkpoint_store.rollback(@id, seq)
+        restore_from_snapshot(data)
+        emit(Events::SessionRolledBack.new(session_id: @id, seq: seq, turn_count: @turn_count))
+        self
+      end
+
+      # Fork the session at a checkpoint: a new session (new id, same model
+      # and tools) whose history is everything up to that point, backed by
+      # its own checkpoint chain. Continue the branch with +run+.
+      #
+      # @param at_seq [Integer, nil] checkpoint to fork from (xor +at_turn:)
+      # @param at_turn [Integer, nil] fork at the last checkpoint whose turn
+      #   count equals +at_turn+ (xor +at_seq:)
+      # @return [Ask::Agent::Session] the forked session
+      # @raise [ArgumentError] when the checkpoint does not exist
+      # @raise [RuntimeError] when checkpointing is not enabled
+      def fork(at_seq: nil, at_turn: nil)
+        require_checkpoints!
+
+        seq = resolve_checkpoint_seq(at_seq, at_turn)
+        data = load_checkpoint(seq: seq)
+        raise ArgumentError, "no checkpoint #{seq}" unless data
+
+        forked_id = @checkpoint_store.fork(@id, at_seq: seq)
+        forked = self.class.new(
+          id: forked_id,
+          model: data[:metadata][:model],
+          tools: @tools,
+          state: @state,
+          checkpoints: true
+        )
+        restore_into(forked, data)
+        emit(Events::SessionForked.new(session_id: @id, forked_id: forked_id, seq: seq))
+        forked
+      end
 
       # --- Async (pending) tools ---
 
@@ -556,8 +650,52 @@ module Ask
         compactor
       end
 
+      def require_checkpoints!
+        raise "checkpointing is not enabled (pass state: and checkpoints: true)" unless @checkpoints
+      end
+
+      # Resolve a checkpoint seq from either an explicit seq or a turn
+      # count (the last checkpoint whose metadata turn_count matches).
+      def resolve_checkpoint_seq(seq, turn)
+        raise ArgumentError, "pass either seq: or turn:, not both" if seq && turn
+
+        if seq
+          seq
+        elsif turn
+          found = checkpoint_history.reverse_each.find do |s|
+            data = self.class.deep_symbolize_keys(@checkpoint_store.load(@id, seq: s) || {})
+            data.dig(:metadata, :turn_count) == turn
+          end
+          raise ArgumentError, "no checkpoint at turn #{turn}" unless found
+
+          found
+        else
+          raise ArgumentError, "pass either seq: or turn:"
+        end
+      end
+
+      # Replace the session's in-memory state with a snapshot (symbol keys)
+      # and keep the legacy blob consistent.
+      def restore_from_snapshot(data)
+        restore_into(self, data)
+        @state.set(@id, data)
+      end
+
+      def restore_into(target, data)
+        target.chat.reset_messages!
+        data[:messages].each do |msg|
+          target.chat.add_message(
+            role: msg[:role].to_sym,
+            content: msg[:content],
+            tool_call_id: msg[:tool_call_id]
+          )
+        end
+        target.instance_variable_set(:@messages, target.chat.messages.dup)
+        target.instance_variable_set(:@turn_count, data.dig(:metadata, :turn_count) || 0)
+      end
+
       def persist!
-        @state.set(@id, {
+        payload = {
           id: @id,
           messages: @chat.messages.map { |m|
             {
@@ -575,7 +713,9 @@ module Ask
             created_at: @created_at.iso8601,
             updated_at: Time.now.iso8601
           }
-        })
+        }
+        @state.set(@id, payload)
+        @checkpoint_store.checkpoint(@id, payload) if @checkpoints
       end
 
       def try_auto_meta_agent
