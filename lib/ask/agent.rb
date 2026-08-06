@@ -21,11 +21,20 @@ module Ask
 
     class UnknownAgent < Error; end
 
-    module Extensions
-      autoload :Permissions, "ask/agent/extensions/permissions"
-      autoload :RateLimiter, "ask/agent/extensions/rate_limiter"
-      autoload :AuditLog, "ask/agent/extensions/audit_log"
-      autoload :ApprovalPolicy, "ask/agent/extensions/approval_policy"
+    # Policies are opt-in, replaceable implementations of the tool-lifecycle
+    # hook seam (before_tool / after_tool). The agent loop runs without them
+    # and their semantics are unchanged by their absence; users compose and
+    # swap them freely (see Ask::Agent::Hooks for the seam).
+    #
+    # A policy is NOT core machinery. Core mechanisms live on Session — the
+    # approval queue, the :pending result status, and the `approval: true`
+    # option are core; Policies::ApprovalPolicy is the reference
+    # classification policy wired on top of them.
+    module Policies
+      autoload :Permissions, "ask/agent/policies/permissions"
+      autoload :RateLimiter, "ask/agent/policies/rate_limiter"
+      autoload :AuditLog, "ask/agent/policies/audit_log"
+      autoload :ApprovalPolicy, "ask/agent/policies/approval_policy"
     end
 
     module Middleware
@@ -236,8 +245,8 @@ module Ask
       yield configuration
     end
 
-    def self.load_extensions
-      Dir[File.expand_path("agent/extensions/*.rb", __dir__)].each { |f| require f }
+    def self.load_policies
+      Dir[File.expand_path("agent/policies/*.rb", __dir__)].each { |f| require f }
     rescue Errno::ENOENT
     end
   end

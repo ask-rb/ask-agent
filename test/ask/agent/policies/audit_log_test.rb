@@ -5,7 +5,7 @@ require "ostruct"
 
 module Ask
   module Agent
-    module Extensions
+    module Policies
       class AuditLogTest < Minitest::Test
         include AgentTestHelpers
 

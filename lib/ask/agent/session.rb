@@ -421,7 +421,7 @@ module Ask
       def build_audit_log(config)
           config ||= Ask::Agent.configuration.audit_log
           return nil unless config
-          Ask::Agent::Extensions::AuditLog.new(self, adapter: config)
+          Ask::Agent::Policies::AuditLog.new(self, adapter: config)
         end
 
       # Build the approval queue + policy when approval is enabled.
@@ -451,7 +451,7 @@ module Ask
           )
         end
 
-        policy = Ask::Agent::Extensions::ApprovalPolicy.new(
+        policy = Ask::Agent::Policies::ApprovalPolicy.new(
           queue: queue,
           require_approval: policy_opts[:require_approval],
           tools: @tools

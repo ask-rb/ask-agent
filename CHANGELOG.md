@@ -1,3 +1,29 @@
+## [0.28.0] — 2026-08-06
+
+### Changed (breaking)
+
+- **`Ask::Agent::Extensions` is now `Ask::Agent::Policies`.** The
+  tool-lifecycle policy classes — `ApprovalPolicy`, `Permissions`,
+  `RateLimiter`, `AuditLog` — moved from `lib/ask/agent/extensions/` to
+  `lib/ask/agent/policies/` and are namespaced under `Ask::Agent::Policies`.
+  The folder is now named after its seam (like `middleware`,
+  `stream_transforms`, `persistence`) instead of "extra stuff".
+  `Ask::Agent.load_extensions` → `Ask::Agent.load_policies`.
+  Update references: `Ask::Agent::Extensions::X` → `Ask::Agent::Policies::X`.
+
+  **What this means for the taxonomy:** policies are opt-in, replaceable
+  implementations of the tool-lifecycle hook seam — the agent loop runs
+  without them, and users can swap in their own implementations. Core
+  mechanisms are unchanged and stay on `Session`: the approval queue, the
+  `:pending` result status, and the `approval: true` option are core;
+  `Policies::ApprovalPolicy` is the reference classification policy wired on
+  top of them.
+
+### Added
+
+- **`Ask::Agent.load_policies`** — replaces `load_extensions` (same
+  behavior: eagerly requires every policy in the policies directory).
+
 ## [0.27.1] — 2026-08-06
 
 ### Fixed

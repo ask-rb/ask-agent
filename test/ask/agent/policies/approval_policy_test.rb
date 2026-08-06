@@ -32,7 +32,7 @@ class ApprovalPolicyTest < Minitest::Test
   end
 
   def build_policy(**opts)
-    Ask::Agent::Extensions::ApprovalPolicy.new(
+    Ask::Agent::Policies::ApprovalPolicy.new(
       queue: @queue, tools: [ApprovalTool.new, AutoTool.new, PlainTool.new], **opts
     )
   end
@@ -102,7 +102,7 @@ class ApprovalPolicyTest < Minitest::Test
 
   def test_auto_approve_rule_enables_flagged_tool
     queue = Ask::Agent::ApprovalQueue.new(auto_approve: { "auto" => true })
-    policy = Ask::Agent::Extensions::ApprovalPolicy.new(
+    policy = Ask::Agent::Policies::ApprovalPolicy.new(
       queue: queue, tools: [AutoTool.new]
     )
     result = policy.before_tool_call(tool_call("auto"), {})
@@ -113,7 +113,7 @@ class ApprovalPolicyTest < Minitest::Test
 
   def test_rule_on_non_flagged_tool_stays_queued
     queue = Ask::Agent::ApprovalQueue.new(auto_approve: { "approval" => true })
-    policy = Ask::Agent::Extensions::ApprovalPolicy.new(
+    policy = Ask::Agent::Policies::ApprovalPolicy.new(
       queue: queue, tools: [ApprovalTool.new]
     )
     result = policy.before_tool_call(tool_call("approval"), {})
@@ -127,10 +127,10 @@ class ApprovalPolicyTest < Minitest::Test
   def test_duck_typed_tool_requires_rule
     duck = Object.new
     duck.define_singleton_method(:name) { "duck_tool" }
-    policy = Ask::Agent::Extensions::ApprovalPolicy.new(queue: @queue, tools: [duck])
+    policy = Ask::Agent::Policies::ApprovalPolicy.new(queue: @queue, tools: [duck])
     assert_equal :proceed, policy.before_tool_call(tool_call("duck_tool"), {})[:action]
 
-    policy = Ask::Agent::Extensions::ApprovalPolicy.new(
+    policy = Ask::Agent::Policies::ApprovalPolicy.new(
       queue: @queue, tools: [duck], require_approval: ["duck_tool"]
     )
     assert_equal :pending, policy.before_tool_call(tool_call("duck_tool"), {})[:action]

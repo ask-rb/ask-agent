@@ -2,7 +2,7 @@
 
 module Ask
   module Agent
-    module Extensions
+    module Policies
       # Approval policy hook: classifies tool calls as approval-required and
       # routes them into an {Ask::Agent::ApprovalQueue}.
       #
@@ -15,7 +15,7 @@ module Ask
       #
       # @example
       #   queue = Ask::Agent::ApprovalQueue.new
-      #   policy = Ask::Agent::Extensions::ApprovalPolicy.new(queue: queue)
+      #   policy = Ask::Agent::Policies::ApprovalPolicy.new(queue: queue)
       #   session = Ask::Agent::Session.new(
       #     model: "gpt-4o",
       #     tools: [SendEmail],

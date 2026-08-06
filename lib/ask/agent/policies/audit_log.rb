@@ -5,7 +5,7 @@ require "time"
 
 module Ask
   module Agent
-    module Extensions
+    module Policies
       # Event-driven audit log for agent sessions.
       #
       # Subscribes to all session events and writes them to a configurable
@@ -93,16 +93,16 @@ module Ask
 
           case adapter
           when :active_record
-            require "ask/agent/extensions/audit_log/active_record_writer"
+            require "ask/agent/policies/audit_log/active_record_writer"
             AuditLog::ActiveRecordWriter.new
           when Hash
             resolve(adapter[:adapter] || adapter[:writer])
           when Symbol, String
             # Try to load adapter by convention:
-            # :active_record → ask/agent/extensions/audit_log/active_record_writer
+            # :active_record → ask/agent/policies/audit_log/active_record_writer
             name = adapter.to_s
             begin
-              require "ask/agent/extensions/audit_log/#{name}_writer"
+              require "ask/agent/policies/audit_log/#{name}_writer"
               klass_name = name.split("_").map(&:capitalize).join
               klass = AuditLog.const_get(klass_name)
               klass.new

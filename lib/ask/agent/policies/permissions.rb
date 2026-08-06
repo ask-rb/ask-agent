@@ -2,7 +2,7 @@
 
 module Ask
   module Agent
-    module Extensions
+    module Policies
       class Permissions
         DEFAULT_TOOLS = %i[write edit bash destroy].freeze
 

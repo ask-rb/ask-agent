@@ -3,7 +3,7 @@ require "time"
 
 module Ask
   module Agent
-    module Extensions
+    module Policies
       class AuditLog
         # ActiveRecord adapter for the audit log.
         # Auto-creates the +ask_audit_logs+ table on first write using

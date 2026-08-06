@@ -2,7 +2,7 @@
 
 module Ask
   module Agent
-    module Extensions
+    module Policies
       class RateLimiter
         def initialize(max_calls_per_minute: 20, max_tool_calls_per_turn: 5)
           @max_calls_per_minute = max_calls_per_minute
