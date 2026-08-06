@@ -22,7 +22,8 @@ module Ask
                      id: nil, system_prompt: nil, parallel_tools: true,
                      reflector: nil, telemetry: true, meta_agent: nil,
                      agent_dir: nil, evaluator: nil, audit_log: nil,
-                     skills_disclosure: true, approval: nil, **chat_options)
+                     skills_disclosure: true, approval: nil,
+                     tool_call_repair: nil, **chat_options)
         @id = id || SecureRandom.uuid
         @agent_dir = agent_dir
         @max_turns = max_turns
@@ -54,6 +55,7 @@ module Ask
         @hooks = Hooks.new(hooks)
         @audit_log = build_audit_log(audit_log)
         @approval_queue = build_approval(approval)
+        @tool_call_repair = tool_call_repair
 
         @system_context = build_system_context(system_prompt)
         apply_system_context
@@ -129,6 +131,7 @@ module Ask
 	            hooks: @hooks,
 	            event_emitter: self,
 	            session_id: @id,
+            tool_call_repair: @tool_call_repair,
 	            persist: @state ? method(:persist!) : nil
 	          )
 
@@ -202,7 +205,8 @@ module Ask
               compactor: @compactor,
               hooks: @hooks,
               event_emitter: self,
-              session_id: @id
+              session_id: @id,
+              tool_call_repair: @tool_call_repair
             )
 
             @total_input_tokens += @loop.last_input_tokens.to_i
@@ -241,7 +245,8 @@ module Ask
               compactor: @compactor,
               hooks: @hooks,
               event_emitter: self,
-              session_id: @id
+              session_id: @id,
+              tool_call_repair: @tool_call_repair
             )
 
             @total_input_tokens += @loop.last_input_tokens.to_i

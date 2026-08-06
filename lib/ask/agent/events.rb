@@ -16,6 +16,9 @@ module Ask
       MessageEnd = Data.define(:tool_calls)
 
       ToolExecutionStart = Data.define(:name, :arguments, :id)
+      # Emitted when a malformed tool call (unparseable arguments or unknown
+      # tool) was repaired by the model before execution.
+      ToolCallRepaired = Data.define(:name, :id, :original_arguments, :corrected_arguments)
       # Emitted when a tool returns Ask::Result.pending (async work started).
       ToolPending = Data.define(:name, :id)
       # Emitted when a pending (async) tool's background work completes.

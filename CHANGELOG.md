@@ -1,3 +1,23 @@
+## [0.29.0] — 2026-08-06
+
+### Added
+
+- **Tool-call repair** — malformed tool calls get one internal LLM round-trip
+  to fix them before execution. When a model emits a call with unparseable
+  arguments or an unknown tool name, the loop asks the model to re-emit it
+  corrected and executes the corrected version instead of burning a turn on
+  the error. Enable with `Session.new(tool_call_repair: true)` (built-in
+  repair prompt) or pass a callable for full control:
+  `Session.new(tool_call_repair: ->(chat, calls, tools) { ... })`.
+  - Corrections are remapped to the original call ids, so tool results stay
+    consistent with the conversation history; the internal repair exchange
+    is stripped from history.
+  - Calls the model cannot correct are dropped (the model saw them in the
+    repair prompt); repair is best-effort — a failing round-trip drops the
+    malformed calls instead of failing the turn.
+  - `Events::ToolCallRepaired` fires with name, id, original and corrected
+    arguments.
+
 ## [0.28.0] — 2026-08-06
 
 ### Changed (breaking)

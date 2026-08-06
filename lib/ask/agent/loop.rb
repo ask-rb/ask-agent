@@ -17,7 +17,7 @@ module Ask
       @max_consecutive_tool_turns = max_consecutive_tool_turns
       end
 
-      def run_turn(chat:, message:, tools:, tool_executor:, compactor:, hooks:, event_emitter:, session_id: nil, persist: nil)
+      def run_turn(chat:, message:, tools:, tool_executor:, compactor:, hooks:, event_emitter:, session_id: nil, persist: nil, tool_call_repair: nil)
         raise MaxTurnsExceeded if @turn_count >= @max_turns
 
         event_emitter.emit(Events::TurnStart.new)
@@ -86,6 +86,10 @@ module Ask
         user_tool_calls = response.tool_calls.reject { |id, _| provider_results.key?(id) }
 
         if user_tool_calls.any?
+          # Repair malformed calls (unparseable arguments, unknown tool
+          # names) with one internal LLM round-trip before executing.
+          user_tool_calls = repair_malformed_calls(user_tool_calls, tools, chat, event_emitter, tool_call_repair)
+
           # Execute user tool calls locally
           # Respect the session's parallel_tools setting: parallel tools run
           # in threads (with the caller's thread-local context inherited);
@@ -162,7 +166,8 @@ module Ask
           hooks: hooks,
           event_emitter: event_emitter,
           session_id: session_id,
-          persist: persist
+          persist: persist,
+          tool_call_repair: tool_call_repair
         )
       end
 
@@ -173,6 +178,43 @@ module Ask
       end
 
       private
+
+      # Repair malformed tool calls before execution. Calls with corrected
+      # versions execute in place of the originals (same ids); calls the
+      # model could not correct are dropped — the model saw them in the
+      # repair prompt. Best-effort: a failing repair round-trip drops the
+      # malformed calls instead of failing the turn.
+      def repair_malformed_calls(user_tool_calls, tools, chat, event_emitter, tool_call_repair)
+        return user_tool_calls if tool_call_repair.nil? || user_tool_calls.empty?
+
+        repairer = if tool_call_repair == true
+          @tool_call_repair ||= ToolCallRepair.new
+        elsif tool_call_repair.respond_to?(:call)
+          ToolCallRepair.new(tool_call_repair)
+        end
+        return user_tool_calls unless repairer
+
+        malformed, _valid = user_tool_calls.partition do |_id, tc|
+          ToolCallRepair.repair_info(tc, tools)
+        end
+        return user_tool_calls if malformed.empty?
+
+        corrections = repairer.call(chat: chat, calls: malformed.to_h, tools: tools)
+
+        corrections.each do |id, corrected|
+          event_emitter.emit(Events::ToolCallRepaired.new(
+            name: corrected.name,
+            id: id,
+            original_arguments: user_tool_calls[id].arguments,
+            corrected_arguments: corrected.arguments
+          ))
+          user_tool_calls[id] = corrected
+        end
+
+        malformed_ids = malformed.map(&:first)
+        user_tool_calls.reject! { |id, _| malformed_ids.include?(id) && !corrections.key?(id) }
+        user_tool_calls
+      end
 
       # Whether the session asked the loop to stop (barge-in). Emitters that
       # don't support aborting (plain stubs) are treated as never aborted.

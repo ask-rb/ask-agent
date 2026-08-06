@@ -37,6 +37,8 @@ module Ask
       autoload :ApprovalPolicy, "ask/agent/policies/approval_policy"
     end
 
+    autoload :ToolCallRepair, "ask/agent/tool_call_repair"
+
     module Middleware
       autoload :Base, "ask/agent/middleware/base"
       autoload :Pipeline, "ask/agent/middleware/pipeline"
