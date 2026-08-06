@@ -34,6 +34,14 @@ module Ask
       # Emitted when a session was forked from a checkpoint.
       SessionForked = Data.define(:session_id, :forked_id, :seq)
 
+      # Emitted when the task list changed (todo_write tool); carries the
+      # full entry list for live rendering.
+      TodoUpdated = Data.define(:todos)
+      # Plan mode lifecycle.
+      PlanProposed = Data.define(:plan)
+      PlanApproved = Data.define(:plan)
+      PlanRejected = Data.define(:plan)
+
       LoopDetected = Data.define(:tool_name, :repeated_count)
       MaxTurnsExceeded = Data.define(:max_turns)
 

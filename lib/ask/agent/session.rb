@@ -23,7 +23,8 @@ module Ask
                      reflector: nil, telemetry: true, meta_agent: nil,
                      agent_dir: nil, evaluator: nil, audit_log: nil,
                      skills_disclosure: true, approval: nil,
-                     tool_call_repair: nil, checkpoints: false, **chat_options)
+                     tool_call_repair: nil, checkpoints: false,
+                     todos: false, plan_mode: false, **chat_options)
         @id = id || SecureRandom.uuid
         @agent_dir = agent_dir
         @max_turns = max_turns
@@ -47,6 +48,25 @@ module Ask
 
         @telemetry = telemetry.is_a?(Telemetry) ? telemetry : Telemetry.new(enabled: !!telemetry)
 
+        # Task list (todo_write tool) — built before resolve_tools so the
+        # tool can be injected with a reference to it.
+        @todos_enabled = !!todos
+        @todo_list = TodoList.new if @todos_enabled
+        @todo_list&.subscribe { |entries| emit(Events::TodoUpdated.new(todos: entries)) }
+
+        # Plan mode — research phase gated to read-only tools until a human
+        # approves the model's plan (submitted via the exit_plan_mode tool).
+        @plan_mode = plan_mode.is_a?(Hash) ? true : !!plan_mode
+        @plan_mode_read_only_tools = if plan_mode.is_a?(Hash) && plan_mode[:read_only_tools]
+          Array(plan_mode[:read_only_tools]).map(&:to_s)
+        else
+          %w[read glob grep web_search]
+        end
+        @plan_queue = ApprovalQueue.new(
+          on_approve: ->(action) { approve_plan(action) },
+          on_reject: ->(action) { reject_plan(action) }
+        ) if @plan_mode
+
         @tools = resolve_tools(tools)
         @chat = build_chat(model, system_prompt, @tools, **chat_options)
         @loop = Loop.new(max_turns: max_turns)
@@ -56,6 +76,15 @@ module Ask
         @audit_log = build_audit_log(audit_log)
         @approval_queue = build_approval(approval)
         @tool_call_repair = tool_call_repair
+
+        # Plan gate runs before user hooks and the approval policy: in plan
+        # mode, non-read-only tools are blocked outright (never queued).
+        if @plan_mode
+          @hooks = Hooks.new(
+            before_tool: [method(:plan_mode_gate)] + Array(@hooks.instance_variable_get(:@before_tool)),
+            after_tool: @hooks.instance_variable_get(:@after_tool)
+          )
+        end
 
         @system_context = build_system_context(system_prompt)
         apply_system_context
@@ -102,6 +131,12 @@ module Ask
       #
       # @return [Ask::Agent::ApprovalQueue, nil]
       attr_reader :approval_queue
+      # @return [Ask::Agent::ApprovalQueue, nil] queue carrying plan
+      #   approvals (only when plan mode is enabled)
+      attr_reader :plan_queue
+      # @return [Ask::Agent::TodoList, nil] session task list (only when
+      #   todos are enabled)
+      attr_reader :todo_list
 
       def run(message, tools: nil, reset: true)
         raise "Session deleted" if @deleted
@@ -329,17 +364,20 @@ module Ask
           end,
           state: adapter,
           # Checkpointing is restored automatically when the session has
-          # checkpoints in the store.
-          checkpoints: !adapter.get("#{id}#{CheckpointStore::HEAD_KEY}").nil?
+          # checkpoints in the store; todos likewise when the snapshot has
+          # a task list.
+          checkpoints: !adapter.get("#{id}#{CheckpointStore::HEAD_KEY}").nil?,
+          todos: !data[:todos].nil?
         )
 
-	        data[:messages].each do |msg|
-	          session.chat.add_message(
-	            role: msg[:role].to_sym,
-	            content: msg[:content],
-	            tool_call_id: msg[:tool_call_id]
-	          )
-	        end
+        data[:messages].each do |msg|
+          session.chat.add_message(
+            role: msg[:role].to_sym,
+            content: msg[:content],
+            tool_call_id: msg[:tool_call_id]
+          )
+        end
+        session.instance_variable_get(:@todo_list)&.restore(data[:todos])
 	
 	        session.instance_variable_set(:@messages, session.chat.messages.dup)
 	        session
@@ -425,11 +463,57 @@ module Ask
           model: data[:metadata][:model],
           tools: @tools,
           state: @state,
-          checkpoints: true
+          checkpoints: true,
+          todos: @todos_enabled,
+          plan_mode: @plan_mode
         )
         restore_into(forked, data)
         emit(Events::SessionForked.new(session_id: @id, forked_id: forked_id, seq: seq))
         forked
+      end
+
+      # --- Plan mode ---
+
+      # @return [Boolean] whether the session is in plan mode (research
+      #   phase; non-read-only tools are blocked until the plan is approved)
+      def plan_mode? = @plan_mode
+
+      # Before-tool gate active while in plan mode: only read-only tools
+      # (and exit_plan_mode itself) run until a human approves the plan.
+      def plan_mode_gate(tool_call, _context)
+        return { action: :proceed } unless @plan_mode
+        return { action: :proceed } if @plan_mode_read_only_tools.include?(tool_call.name) || tool_call.name == "exit_plan_mode"
+
+        { action: :block, reason: "Plan mode: only read-only tools until the plan is approved" }
+      end
+
+      def approve_plan(action)
+        @plan_mode = false
+        plan = action.args[:plan] || action.args["plan"] || ""
+        emit(Events::PlanApproved.new(plan: plan))
+        complete_pending_tool(
+          tool_call_id: action.tool_call_id,
+          result: {
+            tool_name: "exit_plan_mode",
+            message: "Plan approved — execute it now.",
+            status: "success",
+            is_error: false
+          }
+        )
+      end
+
+      def reject_plan(action)
+        plan = action.args[:plan] || action.args["plan"] || ""
+        emit(Events::PlanRejected.new(plan: plan))
+        complete_pending_tool(
+          tool_call_id: action.tool_call_id,
+          result: {
+            tool_name: "exit_plan_mode",
+            message: "Plan rejected by the user — revise your plan and resubmit.",
+            status: "rejected",
+            is_error: false
+          }
+        )
       end
 
       # --- Async (pending) tools ---
@@ -631,6 +715,15 @@ module Ask
         if skills_disclosure_enabled?
           resolved << Ask::Skills::LoadSkillTool.new(registry: @skills_registry) unless resolved.any? { |t| t.name == "load_skill" }
         end
+        if @todo_list
+          resolved << TodoWrite.new(todo_list: @todo_list) unless resolved.any? { |t| t.name == "todo_write" }
+        end
+        if @plan_mode
+          resolved << ExitPlanMode.new(
+            plan_queue: @plan_queue,
+            on_submit: ->(plan) { emit(Events::PlanProposed.new(plan: plan)) }
+          ) unless resolved.any? { |t| t.name == "exit_plan_mode" }
+        end
         resolved
       end
 
@@ -695,6 +788,7 @@ module Ask
         end
         target.instance_variable_set(:@messages, target.chat.messages.dup)
         target.instance_variable_set(:@turn_count, data.dig(:metadata, :turn_count) || 0)
+        target.instance_variable_get(:@todo_list)&.restore(data[:todos])
       end
 
       # User-supplied tools only. Framework-injected tools (the built-in
@@ -717,6 +811,7 @@ module Ask
               created_at: Time.now.iso8601
             }
           },
+          todos: @todo_list&.to_h,
           metadata: {
             model: @chat.model.respond_to?(:id) ? @chat.model.id : @chat.model,
             tools: persisted_tools.map { |t| t.class.name },

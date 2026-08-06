@@ -40,6 +40,9 @@ module Ask
 
     autoload :ToolCallRepair, "ask/agent/tool_call_repair"
     autoload :CheckpointStore, "ask/agent/checkpoint_store"
+    autoload :TodoList, "ask/agent/todo_list"
+    autoload :TodoWrite, "ask/agent/todo_write"
+    autoload :ExitPlanMode, "ask/agent/exit_plan_mode"
 
     module Middleware
       autoload :Base, "ask/agent/middleware/base"

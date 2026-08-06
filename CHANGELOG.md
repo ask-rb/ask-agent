@@ -1,3 +1,32 @@
+## [0.32.0] — 2026-08-06
+
+### Added
+
+- **TodoWrite — the model maintains a live task list.** `Session.new(todos:
+  true)` injects a `todo_write` tool backed by a session-scoped
+  `Ask::Agent::TodoList`:
+  - Actions `add` / `update` / `list` / `clear` with `pending`,
+    `in_progress`, `completed`, `blocked` statuses; every result returns
+    the full list so one call both mutates and shows state.
+  - `Events::TodoUpdated` fires with the full list on every change — the
+    contract for live progress rendering (UI kit / app server).
+  - The list is part of the checkpoint snapshot: `rollback!` and `fork`
+    restore it, and `Session.load` re-enables todos automatically.
+- **Plan mode — research first, execute after human approval.** `Session.new(
+  plan_mode: true)` (or `plan_mode: { read_only_tools: [...] }`) starts the
+  session in a research phase where non-read-only tools are blocked
+  (`:block` with a plan-mode reason; the gate runs before user hooks and
+  the approval policy). The model researches, then calls the injected
+  `exit_plan_mode` tool with its plan:
+  - The plan is submitted to a dedicated `Session#plan_queue` and the tool
+    returns a pending result — the agent hands back the interim reply,
+    exactly like the tool-approval flow.
+  - **Approve** → plan mode turns off, `Events::PlanApproved` fires, and a
+    follow-up turn executes the plan. **Reject** → the session stays in
+    plan mode, `Events::PlanRejected` fires, and the rejection feedback
+    reaches the conversation.
+  - Default read-only allowlist: `read`, `glob`, `grep`, `web_search`.
+
 ## [0.31.0] — 2026-08-06
 
 ### Added
