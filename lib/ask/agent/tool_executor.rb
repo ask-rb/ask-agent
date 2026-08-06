@@ -115,6 +115,17 @@ module Ask
           return { tool_name: tool_call.name, message: hook_result[:reason], status: "blocked", is_error: true }
         when :short_circuit
           return { tool_name: tool_call.name, **hook_result[:result], status: "short_circuited" }
+        when :pending
+          # Queued for human approval — the loop hands the turn back with an
+          # interim reply; the action runs later via ApprovalQueue#approve.
+          return {
+            tool_name: tool_call.name,
+            message: hook_result[:reason] || "Pending approval",
+            status: "pending",
+            is_error: false,
+            tool_call_id: tool_call.id,
+            action_id: hook_result[:action_id]
+          }
         end
 
         return aborted_result(tool_call) if abort_controller&.aborted?

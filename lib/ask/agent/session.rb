@@ -22,7 +22,7 @@ module Ask
                      id: nil, system_prompt: nil, parallel_tools: true,
                      reflector: nil, telemetry: true, meta_agent: nil,
                      agent_dir: nil, evaluator: nil, audit_log: nil,
-                     skills_disclosure: true, **chat_options)
+                     skills_disclosure: true, approval: nil, **chat_options)
         @id = id || SecureRandom.uuid
         @agent_dir = agent_dir
         @max_turns = max_turns
@@ -53,6 +53,7 @@ module Ask
         @compactor = compactor ? build_compactor(compactor) : nil
         @hooks = Hooks.new(hooks)
         @audit_log = build_audit_log(audit_log)
+        @approval_queue = build_approval(approval)
 
         @system_context = build_system_context(system_prompt)
         apply_system_context
@@ -87,6 +88,13 @@ module Ask
           @evaluator = Evaluator.new(model: eval_model)
         end
       end
+
+      # The approval queue backing this session, or nil when the session was
+      # created without approval support. Use it to inspect pending actions
+      # and approve/reject them.
+      #
+      # @return [Ask::Agent::ApprovalQueue, nil]
+      attr_reader :approval_queue
 
       def run(message, tools: nil, reset: true)
         raise "Session deleted" if @deleted
@@ -416,6 +424,48 @@ module Ask
           Ask::Agent::Extensions::AuditLog.new(self, adapter: config)
         end
 
+      # Build the approval queue + policy when approval is enabled.
+      #
+      # `approval` accepts:
+      #   - true            → queue with defaults
+      #   - a Hash          → { require_approval:, auto_approve: } for the policy
+      #   - an ApprovalQueue → uses it, with policy options from
+      #                        approval[:policy] if given
+      #
+      # When enabled, an ApprovalPolicy hook is prepended to the session's
+      # before_tool hooks so approval-required tools queue instead of running.
+      def build_approval(approval)
+        return nil unless approval
+
+        policy_opts = approval.is_a?(Hash) ? approval : {}
+
+        queue = if approval.is_a?(Ask::Agent::ApprovalQueue)
+          approval
+        elsif policy_opts[:queue].is_a?(Ask::Agent::ApprovalQueue)
+          policy_opts[:queue]
+        else
+          Ask::Agent::ApprovalQueue.new(
+            auto_approve: policy_opts[:auto_approve],
+            on_approve: ->(action) { apply_approved_action(action) },
+            on_reject: ->(action) { reject_pending_action(action) }
+          )
+        end
+
+        policy = Ask::Agent::Extensions::ApprovalPolicy.new(
+          queue: queue,
+          require_approval: policy_opts[:require_approval],
+          tools: @tools
+        )
+
+        # Prepend the approval gate so it runs before user hooks
+        @hooks = Hooks.new(
+          before_tool: [policy.method(:before_tool_call)] + Array(@hooks.instance_variable_get(:@before_tool)),
+          after_tool: @hooks.instance_variable_get(:@after_tool)
+        )
+
+        queue
+      end
+
       def build_chat(model, system_prompt, tools, **chat_options)
         if model.respond_to?(:ask)
           model
@@ -424,6 +474,48 @@ module Ask
           chat.with_instructions(system_prompt) if system_prompt
           chat
         end
+      end
+
+      # Execute an approved action's tool call and complete the pending tool,
+      # so the follow-up turn voices the outcome.
+      def apply_approved_action(action)
+        tool = @tools.find { |t| t.name == action.tool_name }
+        if tool
+          result = tool.call(action.args)
+          status = result.respond_to?(:ok?) ? (result.ok? ? "success" : "error") : "success"
+          complete_pending_tool(
+            tool_call_id: action.tool_call_id,
+            result: {
+              tool_name: action.tool_name,
+              message: result.to_s,
+              status: status,
+              is_error: status == "error"
+            }
+          )
+        else
+          complete_pending_tool(
+            tool_call_id: action.tool_call_id,
+            result: {
+              tool_name: action.tool_name,
+              message: "Tool not found: #{action.tool_name}",
+              status: "error",
+              is_error: true
+            }
+          )
+        end
+      end
+
+      # Notify the conversation that an action was rejected by the user.
+      def reject_pending_action(action)
+        complete_pending_tool(
+          tool_call_id: action.tool_call_id,
+          result: {
+            tool_name: action.tool_name,
+            message: "Action '#{action.tool_name}' was rejected by the user.",
+            status: "rejected",
+            is_error: false
+          }
+        )
       end
 
       def resolve_tools(tools)

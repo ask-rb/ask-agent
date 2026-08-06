@@ -1,3 +1,49 @@
+## [0.27.0] — 2026-08-06
+
+### Added
+
+- **Human-in-the-loop tool approval — `Ask::Agent::ApprovalQueue`.** Tools
+  declared `approval_required` (ask-tools) are queued instead of executed:
+  the agent receives a pending result and continues, and the tool runs only
+  after a human approves it. Built on the async-tools seam
+  (`Ask::Result.pending` → `register_pending_tool` → `complete_pending_tool`).
+
+  ```ruby
+  session = Ask::Agent::Session.new(
+    model: "gpt-4o",
+    tools: [SendEmail],          # SendEmail.approval_required true
+    approval: { auto_approve: {} }
+  )
+  session.run("Email bob about the launch")
+
+  # Later, when the user decides:
+  session.approval_queue.pending_actions   # inspect what's waiting
+  session.approval_queue.approve_all       # or approve(id) / reject(id)
+  ```
+
+  - `approval: true` enables with defaults; a Hash accepts
+    `require_approval:` (tool names / regexps / `:all`) and `auto_approve:`
+    (user-enabled rules keyed by tool name). A custom `ApprovalQueue`
+    instance is accepted too.
+  - **Auto-approval is a dual signal** — a tool marked `auto_approvable`
+    AND a user rule enabling it. Nothing is silently applied past a manual
+    (non-auto-approvable) gate; eligible actions drain in id order with a
+    single-flight guard (no double-apply).
+  - **Approving executes the real tool** and feeds the result into the
+    conversation; **rejecting** injects a "rejected by the user" message and
+    the agent adapts. Failed applies leave the action pending for retry.
+  - `Session#approval_queue` returns the queue (nil when approval is off).
+
+- **`Ask::Agent::Extensions::ApprovalPolicy`** — the classification hook.
+  Queues calls for tools whose class declares `approval_required`, or whose
+  name matches rule-based lists, or (with `require_approval: :all`) every
+  call. Usable standalone as a `before_tool` hook.
+
+### Changed
+
+- `ToolExecutor` before-tool hooks now support a `:pending` action alongside
+  `:block` and `:short_circuit`, returning a pending tool result.
+
 ## [0.26.1] - 2026-08-05
 
 ### Added

@@ -25,6 +25,7 @@ module Ask
       autoload :Permissions, "ask/agent/extensions/permissions"
       autoload :RateLimiter, "ask/agent/extensions/rate_limiter"
       autoload :AuditLog, "ask/agent/extensions/audit_log"
+      autoload :ApprovalPolicy, "ask/agent/extensions/approval_policy"
     end
 
     module Middleware
@@ -257,6 +258,7 @@ require_relative "agent/evaluator"
 require_relative "agent/tool_executor"
 require_relative "agent/compactor"
 require_relative "agent/hooks"
+require_relative "agent/approval_queue"
 require_relative "agent/configuration"
 require_relative "agent/meta_agent"
 require_relative "agent/persistence/base"
