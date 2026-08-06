@@ -73,8 +73,6 @@ module Ask
           }.compact
         )
 
-        emit_instrumentation(stream, response_msg)
-
         response_msg
       end
 
@@ -208,20 +206,35 @@ module Ask
           begin
             req = build_request(stream)
 
-            result = if @middleware_pipeline
-              @middleware_pipeline.invoke(provider, req) do
+            # The chat.ask event wraps the actual provider call so
+            # event.duration measures the true LLM latency. Tokens/cost are
+            # only known once the call returns, so the (mutable) payload is
+            # passed into the block and enriched there — before the event's
+            # finish fires.
+            response = instrument_llm_call(stream) do |payload|
+              result = if @middleware_pipeline
+                @middleware_pipeline.invoke(provider, req) do
+                  call_provider(req, calls_acc, &block)
+                end
+              else
                 call_provider(req, calls_acc, &block)
               end
-            else
-              call_provider(req, calls_acc, &block)
+
+              # Flush any buffered stream transforms (e.g. TextBuffer)
+              if block && @transform_pipeline
+                flush_transforms(&block)
+              end
+
+              response = build_response_from_result(result, calls_acc, stream)
+              usage = payload[:usage] ||= {}
+              usage[:input_tokens] = response.input_tokens
+              usage[:output_tokens] = response.output_tokens
+              usage[:cost] = response.cost
+              usage[:tool_calls] = response.tool_call?
+              response
             end
 
-            # Flush any buffered stream transforms (e.g. TextBuffer)
-            if block && @transform_pipeline
-              flush_transforms(&block)
-            end
-
-            return build_response_from_result(result, calls_acc, stream)
+            return response
           rescue Ask::RateLimitError => e
             raise if attempt >= MAX_CHAT_RETRIES - 1
 
@@ -357,28 +370,47 @@ module Ask
         nil
       end
 
-      def emit_instrumentation(stream, response_msg)
-        return unless defined?(Ask::Instrumentation)
-
+      # Run the provider call inside the chat.ask event so event.duration
+      # measures the real LLM latency. The event payload is yielded to the
+      # block so the caller can enrich it (tokens, cost) before the event
+      # finishes.
+      #
+      # Instrumentation must never break the chat loop: a subscriber error
+      # after the call succeeded is swallowed (the response is returned);
+      # an error before the block ran falls through and runs the call
+      # without telemetry. Only real LLM errors propagate.
+      def instrument_llm_call(stream)
         payload = {
           model: @model_id,
           provider: @model_info.provider,
-          input_tokens: response_msg.input_tokens,
-          output_tokens: response_msg.output_tokens,
-          cost: response_msg.cost,
-          tool_calls: response_msg.tool_call?,
           stream: stream,
           middleware: @middleware_pipeline&.configured?,
-          stream_transforms: @transform_pipeline&.configured?
+          stream_transforms: @transform_pipeline&.configured?,
+          # Tokens/cost are only known once the call returns, and
+          # instrument() copies the payload shallowly — this nested hash is
+          # shared with the event, so in-block enrichment is visible to
+          # subscribers at finish time.
+          usage: {}
         }.compact
 
-        if stream
-          Ask::Instrumentation.instrument("chat.stream.ask", payload)
+        called = false
+        result = nil
+        if defined?(Ask::Instrumentation)
+          Ask::Instrumentation.instrument(stream ? "chat.stream.ask" : "chat.ask", payload) do
+            called = true
+            result = yield(payload)
+          end
         else
-          Ask::Instrumentation.instrument("chat.ask", payload)
+          called = true
+          result = yield(payload)
         end
+        result
       rescue StandardError
-        nil
+        return result if called && !result.nil?
+
+        raise if called
+
+        yield({})
       end
     end
   end

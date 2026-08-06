@@ -1,3 +1,18 @@
+## [0.27.1] — 2026-08-06
+
+### Fixed
+
+- **`chat.ask` / `chat.stream.ask` events now measure real LLM latency.** The
+  event was emitted after the call without a block, so `event.duration` was
+  ~0ms and duration metrics (e.g. `ask_llm_duration_seconds`,
+  `llm.duration_ms` spans) were meaningless. The provider call now runs
+  inside the instrument block; tokens/cost/tool_calls are enriched through a
+  shared nested `usage` payload hash (known only after the call returns) and
+  subscribers read it from there. Instrumentation failures can no longer
+  fail an `ask` — a wrapper error before the call falls through and runs the
+  call without telemetry, and a subscriber error after success returns the
+  response.
+
 ## [0.27.0] — 2026-08-06
 
 ### Added

@@ -30,6 +30,7 @@ require "ask/skills"
 require "ask/agent"
 
 require "minitest/autorun"
+require "minitest/mock"
 require "ostruct"
 require "mocha/minitest"
 
