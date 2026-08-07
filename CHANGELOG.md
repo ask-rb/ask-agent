@@ -1,3 +1,9 @@
+## [0.34.0] — 2026-08-07
+
+### Added
+
+- **Runtime model/provider/key overrides.** `Ask::Agent.new(name, model:, provider:, api_key:, api_base:)` and `Ask::Agent::Chat.new(..., api_key:, api_base:)` — caller-supplied options win over the definition's config, and an explicit `api_key`/`api_base` is merged into the provider config ahead of Ask::Auth resolution. This is the BYOK / per-user credential injection seam (a session can be built against a specific provider and key without touching global configuration).
+
 ## [0.33.0] — 2026-08-06
 
 ### Added

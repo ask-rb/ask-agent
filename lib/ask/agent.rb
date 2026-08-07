@@ -80,14 +80,16 @@ module Ask
       # Create a new agent session from a named definition.
       #
       # @param name [String, Symbol] the agent name (directory name under +agents/+)
+      # @param opts [Hash] runtime overrides — model, provider, api_key, api_base,
+      #   max_turns, etc. Caller-supplied options win over the definition's config.
       # @return [Session] a configured, ready-to-run session
-      def new(name)
+      def new(name, **opts)
         discover!
         entry = @registry[name.to_s]
         raise UnknownAgent, "Unknown agent: #{name.inspect}. Searched agents/ and app/agents/." unless entry
 
         klass, dir = entry
-        build_session_from_definition(klass, dir)
+        build_session_from_definition(klass, dir, opts)
       end
 
       # Force re-discovery of agent definitions.
@@ -182,7 +184,7 @@ module Ask
         end
       end
 
-      def build_session_from_definition(klass, dir)
+      def build_session_from_definition(klass, dir, opts = {})
         config = klass._config
         session_opts = { model: config[:model] || Ask::Agent.configuration.default_model }
 
@@ -217,6 +219,10 @@ module Ask
           }
           Ask::Agent.configuration.scheduler.every(schedule, name: File.basename(dir), &task_block)
         end
+
+        # Caller-supplied runtime options (model/provider/api_key/api_base/...)
+        # win over the definition's config.
+        session_opts.merge!(opts) unless opts.empty?
 
         Session.new(**session_opts)
       end

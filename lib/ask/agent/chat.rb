@@ -33,7 +33,7 @@ module Ask
 
       attr_writer :test_provider
 
-      def initialize(model:, tools: [], temperature: nil, schema: nil, provider: nil, prompt_caching: nil, **)
+      def initialize(model:, tools: [], temperature: nil, schema: nil, provider: nil, prompt_caching: nil, api_key: nil, api_base: nil, **)
         @model_id = model.respond_to?(:id) ? model.id : model.to_s
         @model_info = Ask::ModelCatalog.find(@model_id)
         @tools = tools
@@ -41,6 +41,8 @@ module Ask
         @schema = schema
         @messages = []
         @provider_override = provider
+        @api_key = api_key
+        @api_base = api_base
         @provider = nil
 
         # Read configured middleware, transforms, and caching from global config
@@ -130,9 +132,9 @@ module Ask
           cred_names << [base_s.to_sym, :api_key]
         end
 
-        key = Ask::Auth.resolve(*cred_names) rescue nil
+        key = @api_key || (Ask::Auth.resolve(*cred_names) rescue nil)
 
-        base_url = Ask::Auth.resolve(:"#{slug}_api_base") rescue nil
+        base_url = @api_base || (Ask::Auth.resolve(:"#{slug}_api_base") rescue nil)
         config = { api_key: key }
         config[:"#{slug}_api_key"] = key
         config[:"#{slug}_api_base"] = base_url if base_url
