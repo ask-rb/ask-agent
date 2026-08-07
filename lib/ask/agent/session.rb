@@ -26,6 +26,7 @@ module Ask
                      tool_call_repair: nil, checkpoints: false,
                      todos: false, plan_mode: false, memory: nil,
                      memory_learning: false, offload_large_outputs: false,
+                     artifacts: false, artifact_uploader: nil,
                      **chat_options)
         @id = id || SecureRandom.uuid
         @agent_dir = agent_dir
@@ -85,6 +86,17 @@ module Ask
           ToolOutputStore.new(state: state || persistence || Ask::State::Memory.new)
         end
 
+        # Tool deliverables (artifacts): metadata[:artifact] on tool results
+        # is collected into the store — inline content for small text,
+        # external URIs for large binaries (uploader lifts content to a URI
+        # when provided).
+        @artifact_store = if artifacts
+          ArtifactStore.new(
+            state: state || persistence || Ask::State::Memory.new,
+            uploader: artifact_uploader
+          )
+        end
+
         # Plan mode — research phase gated to read-only tools until a human
         # approves the model's plan (submitted via the exit_plan_mode tool).
         @plan_mode = plan_mode.is_a?(Hash) ? true : !!plan_mode
@@ -105,7 +117,8 @@ module Ask
           max_retries: max_tool_retries,
           parallel: parallel_tools,
           output_offload_threshold: @offload_threshold,
-          output_store: @output_store
+          output_store: @output_store,
+          artifact_store: @artifact_store
         )
         @compactor = compactor ? build_compactor(compactor) : nil
         @hooks = Hooks.new(hooks)
@@ -179,6 +192,9 @@ module Ask
       # @return [Ask::Agent::ToolOutputStore, nil] store for offloaded large
       #   tool outputs (only when large-output offloading is enabled)
       attr_reader :output_store
+      # @return [Ask::Agent::ArtifactStore, nil] store for tool deliverables
+      #   (only when the +artifacts:+ option is enabled)
+      attr_reader :artifact_store
 
       def run(message, tools: nil, reset: true)
         raise "Session deleted" if @deleted
@@ -441,6 +457,7 @@ module Ask
         @deleted = true
         @checkpoint_store&.delete(@id)
         @output_store&.delete(@id)
+        @artifact_store&.delete(@id)
         @state&.delete(@id)
       end
 
@@ -526,6 +543,24 @@ module Ask
         emit(Events::SessionForked.new(session_id: @id, forked_id: forked_id, seq: seq))
         forked
       end
+
+# --- Artifacts (tool deliverables) ---
+
+# @return [Array<Hash>] artifact summaries for this session (id,
+#   filename, mime_type, size, uri), newest first
+# @raise [RuntimeError] when artifacts are not enabled
+def artifacts
+  require_artifacts!
+  @artifact_store.list(@id)
+end
+
+# @param id [String] artifact id
+# @return [Hash, nil] the full record (content or uri)
+# @raise [RuntimeError] when artifacts are not enabled
+def fetch_artifact(id)
+  require_artifacts!
+  @artifact_store.fetch(@id, id)
+end
 
       # --- Plan mode ---
 
@@ -882,6 +917,10 @@ module Ask
         )
         compactor.chat = @chat
         compactor
+      end
+
+      def require_artifacts!
+        raise "artifacts are not enabled (pass artifacts: true)" unless @artifact_store
       end
 
       def require_checkpoints!

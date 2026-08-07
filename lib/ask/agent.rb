@@ -49,6 +49,7 @@ module Ask
     autoload :MemoryExtractor, "ask/agent/memory_extractor"
     autoload :ToolOutputStore, "ask/agent/tool_output_store"
     autoload :OutputRead, "ask/agent/output_read"
+    autoload :ArtifactStore, "ask/agent/artifact_store"
 
     module Middleware
       autoload :Base, "ask/agent/middleware/base"

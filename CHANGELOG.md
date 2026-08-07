@@ -1,3 +1,26 @@
+## [0.38.0] — 2026-08-07
+
+### Added
+
+- **Artifacts — tool deliverables with a web-friendly home.**
+  `Session.new(artifacts: true)` collects tool-produced files into an
+  `Ask::Agent::ArtifactStore` on the same state adapter as sessions and
+  checkpoints:
+  - Tools attach `metadata: { artifact: { filename:, mime_type:, content: | uri: } }`
+    to their result. **Inline content** (small text: reports, CSVs,
+    patches) is stored in the state store; **external URIs** (large or
+    binary files) are stored as references with metadata only.
+  - `Session#artifacts` lists them (newest first, no content payload);
+    `Session#fetch_artifact(id)` retrieves the full record. `Session#delete`
+    cleans up.
+  - **Uploader hook** — `Session.new(artifacts: true, artifact_uploader:
+    ->(content:, filename:, mime_type:) { uri })` lifts inline content to a
+    URI before storage, so apps that prefer object storage never grow the
+    database: tools return content, the session uploads, the store keeps
+    the reference.
+  - Malformed artifacts never fail the tool — the message notes
+    `[artifact not stored: ...]` instead.
+
 ## [0.37.0] — 2026-08-07
 
 ### Added

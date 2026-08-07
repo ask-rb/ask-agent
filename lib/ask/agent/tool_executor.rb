@@ -11,12 +11,13 @@ module Ask
 
       attr_reader :total_executions
 
-      def initialize(max_retries: 3, parallel: true, output_offload_threshold: nil, output_store: nil)
+      def initialize(max_retries: 3, parallel: true, output_offload_threshold: nil, output_store: nil, artifact_store: nil)
         @max_retries = max_retries
         @parallel = parallel
         @total_executions = 0
         @output_offload_threshold = output_offload_threshold
         @output_store = output_store
+        @artifact_store = artifact_store
       end
 
       attr_writer :telemetry
@@ -196,6 +197,19 @@ module Ask
           message = offload_message(message, tool_call.id)
         end
 
+        # Collect tool-produced deliverables (metadata[:artifact]) into the
+        # session's artifact store. Best-effort: a malformed artifact is
+        # noted in the message, never a tool failure.
+        if @artifact_store && result[:result].respond_to?(:metadata) &&
+           (artifact = result[:result].metadata[:artifact])
+          begin
+            attrs = symbolize_artifact(artifact)
+            @artifact_store.store(@session_id, **attrs)
+          rescue ArgumentError => e
+            message += "\n[artifact not stored: #{e.message}]"
+          end
+        end
+
         inner = result[:result]
         status = if result[:is_error] == true
           "error"
@@ -254,6 +268,17 @@ module Ask
         @output_store.store(@session_id, tool_call_id, message)
         preview = message[0, 300]
         "#{preview}\n...(output truncated: #{message.length} chars — full output via output_read id: \"#{tool_call_id}\")"
+      end
+
+      # Normalize an artifact hash from tool metadata (accepts string keys)
+      # to the store's keyword contract.
+      def symbolize_artifact(artifact)
+        {
+          filename: artifact[:filename] || artifact["filename"],
+          mime_type: artifact[:mime_type] || artifact["mime_type"],
+          content: artifact[:content] || artifact["content"],
+          uri: artifact[:uri] || artifact["uri"]
+        }
       end
 
       def retryable_error_name?(error_name)
