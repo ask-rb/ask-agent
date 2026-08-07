@@ -33,7 +33,7 @@ module Ask
 
       attr_writer :test_provider
 
-      def initialize(model:, tools: [], temperature: nil, schema: nil, provider: nil, prompt_caching: nil, api_key: nil, api_base: nil, **)
+      def initialize(model:, tools: [], temperature: nil, schema: nil, provider: nil, prompt_caching: nil, api_key: nil, api_base: nil, account_id: nil, **)
         @model_id = model.respond_to?(:id) ? model.id : model.to_s
         @model_info = Ask::ModelCatalog.find(@model_id)
         @tools = tools
@@ -43,6 +43,7 @@ module Ask
         @provider_override = provider
         @api_key = api_key
         @api_base = api_base
+        @account_id = account_id
         @provider = nil
 
         # Read configured middleware, transforms, and caching from global config
@@ -138,6 +139,7 @@ module Ask
         config = { api_key: key }
         config[:"#{slug}_api_key"] = key
         config[:"#{slug}_api_base"] = base_url if base_url
+        config[:account_id] = @account_id if @account_id
         Ask::LLM::Config.new(config)
       end
 

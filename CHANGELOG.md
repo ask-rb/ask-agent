@@ -1,3 +1,9 @@
+## [0.34.1] — 2026-08-07
+
+### Added
+
+- **`account_id` session option.** `Ask::Agent::Chat.new(..., account_id:)` merges the value into the provider config (e.g. `ChatGPT-Account-Id` for the OpenAI Codex provider).
+
 ## [0.34.0] — 2026-08-07
 
 ### Added

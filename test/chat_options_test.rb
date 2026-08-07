@@ -70,3 +70,9 @@ class ChatOptionsTest < Minitest::Test
     $LOADED_FEATURES.delete_if { |f| f.start_with?(FIXTURES) }
   end
 end
+
+  def test_explicit_account_id_reaches_provider_config
+    config = captured_provider_config(model: "gpt-4o", provider: :openai, account_id: "acct_123")
+
+    assert_equal "acct_123", config.account_id
+  end
