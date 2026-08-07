@@ -17,7 +17,7 @@ module Ask
       @max_consecutive_tool_turns = max_consecutive_tool_turns
       end
 
-      def run_turn(chat:, message:, tools:, tool_executor:, compactor:, hooks:, event_emitter:, session_id: nil, persist: nil, tool_call_repair: nil)
+      def run_turn(chat:, message:, tools:, tool_executor:, compactor:, hooks:, event_emitter:, session_id: nil, persist: nil, tool_call_repair: nil, steer_source: nil)
         raise MaxTurnsExceeded if @turn_count >= @max_turns
 
         event_emitter.emit(Events::TurnStart.new)
@@ -157,10 +157,12 @@ module Ask
         # Aborted while tools ran? Skip the follow-up LLM call.
         return response.content.to_s if aborted?(event_emitter)
 
-        # Recursive call — LLM processes tool results
+        # Recursive call — LLM processes tool results. When a steer source
+        # is provided, queued steer messages become the next user message
+        # instead of an empty continuation.
         run_turn(
           chat: chat,
-          message: "",
+          message: steer_source ? steer_source.call.to_s : "",
           tools: tools,
           tool_executor: tool_executor,
           compactor: compactor,
@@ -168,7 +170,8 @@ module Ask
           event_emitter: event_emitter,
           session_id: session_id,
           persist: persist,
-          tool_call_repair: tool_call_repair
+          tool_call_repair: tool_call_repair,
+          steer_source: steer_source
         )
       end
 

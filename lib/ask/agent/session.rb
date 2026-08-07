@@ -41,6 +41,13 @@ module Ask
         @pending_mutex = Mutex.new
         @followup_pending = false
         @turn_count = 0
+        # Concurrency-safe steering: turn id bumped at every
+        # TurnStart; steers arriving mid-turn are queued and dispatched at
+        # the next turn boundary.
+        @turn_id = 0
+        @queued_steers = []
+        @steer_mutex = Mutex.new
+        on(Events::TurnStart) { @turn_id += 1 }
         @created_at = Time.now
         @_no_tools_instructed = false
 
@@ -197,6 +204,10 @@ module Ask
           @_no_tools_instructed = true
         end
 
+        # Leftover queued steers from a previous run become user messages
+        # before this run starts.
+        drain_leftover_steers
+
         begin
           @tool_executor.telemetry = @telemetry
 
@@ -210,6 +221,7 @@ module Ask
 	            event_emitter: self,
 	            session_id: @id,
             tool_call_repair: @tool_call_repair,
+            steer_source: method(:drain_one_steer),
 	            persist: @state ? method(:persist!) : nil
 	          )
 
@@ -517,6 +529,20 @@ module Ask
 
       # --- Plan mode ---
 
+      # Pop the next queued steer (called by the loop at each turn
+      # boundary); returns "" when nothing is queued.
+      def drain_one_steer
+        @steer_mutex.synchronize { @queued_steers.shift }.to_s
+      end
+
+      # Move any queued steers left over from a previous run into the
+      # conversation (the session was idle, so they are dispatched now).
+      def drain_leftover_steers
+        while (message = drain_one_steer) != ""
+          @chat.add_message(role: :user, content: message)
+        end
+      end
+
       # Extract durable facts from this session's transcript into memory
       # (memory_learning: true). Best-effort — extraction never breaks the
       # session; failures are swallowed.
@@ -580,6 +606,45 @@ module Ask
             is_error: false
           }
         )
+      end
+
+      # --- Steer (concurrency-safe message injection) ---
+
+      # @return [Integer] id of the turn currently running (or the last
+      #   completed turn when idle)
+      attr_reader :turn_id
+
+      # Inject a message into the session safely, from any thread (web, CLI,
+      # another agent):
+      #
+      # - **:stale** — the caller's `expected_turn_id` does not match the
+      #   current turn id (the caller was looking at an older state).
+      # - **:queued** — a turn is running; the message is held and dispatched
+      #   as the next user message at the next turn boundary.
+      # - **:steered** — the session is idle; the message is added to the
+      #   conversation and processed by the next run.
+      #
+      # @param message [String]
+      # @param expected_turn_id [Integer, nil] the turn id the caller
+      #   believes is current; nil skips the check
+      # @return [Hash] {status: :stale|:queued|:steered, turn_id: Integer}
+      def steer(message, expected_turn_id: nil)
+        @steer_mutex.synchronize do
+          if expected_turn_id && expected_turn_id != @turn_id
+            return { status: :stale, turn_id: @turn_id }
+          end
+          if @running
+            @queued_steers << message.to_s
+            return { status: :queued, turn_id: @turn_id }
+          end
+        end
+        @chat.add_message(role: :user, content: message.to_s)
+        { status: :steered, turn_id: @turn_id }
+      end
+
+      # @return [Integer] steers queued and not yet dispatched
+      def queued_steers
+        @steer_mutex.synchronize { @queued_steers.size }
       end
 
       # --- Async (pending) tools ---
@@ -895,7 +960,17 @@ module Ask
           }
         }
         @state.set(@id, payload)
-        @checkpoint_store.checkpoint(@id, payload) if @checkpoints
+        # Checkpoint only when the conversation actually changed since the
+        # last one: the loop persists after every turn and run() persists
+        # again on the way out, so without this check every run would append
+        # a duplicate tail checkpoint.
+        if @checkpoints
+          head = @checkpoint_store.load(@id)
+          head_messages = head ? (head["messages"] || head[:messages] || []) : []
+          head_turn = head ? (head.dig("metadata", "turn_count") || head.dig(:metadata, :turn_count)) : nil
+          unchanged = head_messages.size == payload[:messages].size && head_turn == @turn_count
+          @checkpoint_store.checkpoint(@id, payload) unless unchanged
+        end
       end
 
       def try_auto_meta_agent

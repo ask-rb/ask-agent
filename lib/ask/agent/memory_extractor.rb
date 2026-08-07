@@ -5,8 +5,7 @@ require "json"
 module Ask
   module Agent
     # Extracts durable facts from a finished session's transcript and writes
-    # them to the session's {Memory} — the "learning" half of durable memory
-    # (codex two-phase pattern, phase 1).
+    # them to the session's {Memory} — the "learning" half of durable memory.
     #
     # One LLM call with a structured-output prompt: the model reads the
     # memory-relevant messages and returns a JSON list of durable facts.

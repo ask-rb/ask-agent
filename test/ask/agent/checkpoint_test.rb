@@ -386,7 +386,9 @@ module Ask
         result = session.run("start")
 
         assert_equal "done", result
-        assert_operator session.checkpoint_history.size, :>=, 2
+        # Exactly 2 turns → exactly 2 checkpoints. The run-end persist!
+        # must not append a duplicate tail checkpoint.
+        assert_equal [1, 2], session.checkpoint_history
         # The tool executed as part of a real turn, and the rollback API can
         # rewind to the first turn.
         session.rollback!(seq: 1)

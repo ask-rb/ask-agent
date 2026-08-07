@@ -1,3 +1,30 @@
+## [0.37.0] — 2026-08-07
+
+### Added
+
+- **Steer — concurrency-safe message injection.**
+  `Session#steer(message, expected_turn_id:)` lets any thread (web, CLI,
+  another agent) inject a message safely:
+  - **`:stale`** — `expected_turn_id` doesn't match the current turn id
+    (the caller was looking at an older state); the message is rejected.
+  - **`:queued`** — a turn is running; the message is held and dispatched
+    as the next user message at the next turn boundary (the loop now
+    resolves each recursive turn's message from a steer source). No more
+    abort-and-retry.
+  - **`:steered`** — the session is idle; the message enters the
+    conversation and the next run processes it. Queued leftovers drain at
+    the next run start.
+  - `Session#turn_id` tracks the running turn (bumped on `TurnStart`);
+    `Session#queued_steers` reports pending messages.
+
+### Fixed
+
+- **No more duplicate tail checkpoints.** The loop persists after every
+  turn and `run()` persists again on the way out, so every run previously
+  appended a redundant checkpoint (seqs 1,2,3 for two turns). `persist!`
+  now skips the checkpoint when the message count and turn count are
+  unchanged — `checkpoint_history` is exact.
+
 ## [0.36.0] — 2026-08-07
 
 ### Added
