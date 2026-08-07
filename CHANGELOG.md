@@ -1,3 +1,23 @@
+## [0.35.0] — 2026-08-07
+
+### Added
+
+- **Memory learning — automatic extraction (v2 of durable memory).**
+  `Session.new(memory: memory, memory_learning: true)` extracts durable
+  facts from the transcript when the session ends — the model no longer has
+  to remember to call `memory_write`:
+  - `Ask::Agent::MemoryExtractor` reads the memory-relevant messages (user
+    + assistant, capped, oldest dropped), sends them to the model with a
+    configurable structured-output prompt, and writes the returned facts
+    into the store — deduped (exact + near-duplicate via search), stamped
+    with provenance (`extracted: true`, source session id), and capped
+    (`max_candidates:`, default 10).
+  - Extraction is best-effort: unparseable responses and failed calls
+    yield an empty result and never break the session.
+  - `Memory.new(max_entries:)` prunes the oldest entries once a namespace
+    exceeds the cap — bounded memory, not a growing dump.
+  - Requires `memory:`; `memory_learning:` without it raises.
+
 ## [0.34.1] — 2026-08-07
 
 ### Added

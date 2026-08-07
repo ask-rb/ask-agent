@@ -24,7 +24,8 @@ module Ask
                      agent_dir: nil, evaluator: nil, audit_log: nil,
                      skills_disclosure: true, approval: nil,
                      tool_call_repair: nil, checkpoints: false,
-                     todos: false, plan_mode: false, memory: nil, **chat_options)
+                     todos: false, plan_mode: false, memory: nil,
+                     memory_learning: false, **chat_options)
         @id = id || SecureRandom.uuid
         @agent_dir = agent_dir
         @max_turns = max_turns
@@ -57,6 +58,12 @@ module Ask
         # Durable memory (memory_write / memory_search tools). An instance
         # with its own namespace and state adapter; nil disables memory.
         @memory = memory
+        # Learning: extract durable facts from the transcript when the
+        # session ends (requires memory).
+        if memory_learning && !@memory
+          raise ArgumentError, "memory_learning: requires a memory: instance"
+        end
+        @memory_learning = !!memory_learning
 
         # Plan mode — research phase gated to read-only tools until a human
         # approves the model's plan (submitted via the exit_plan_mode tool).
@@ -209,6 +216,10 @@ module Ask
           @running = false
           Ask::Agent.current_session = nil if Ask::Agent.current_session.equal?(self)
           persist! if @state
+          # Learn from this session: extract durable facts into memory.
+          # Only on the initial run (not follow-ups); best-effort, never
+          # raises.
+          extract_memories if reset && @memory_learning
           # A pending tool completed while this run was busy: voice the
           # result now that the turn is over (one follow-up per completion).
           follow_up = @pending_mutex.synchronize do
@@ -483,6 +494,16 @@ module Ask
       end
 
       # --- Plan mode ---
+
+      # Extract durable facts from this session's transcript into memory
+      # (memory_learning: true). Best-effort — extraction never breaks the
+      # session; failures are swallowed.
+      def extract_memories
+        extractor = MemoryExtractor.new(model: model_id_from(@chat), memory: @memory)
+        extractor.extract(transcript: @chat.messages, session_id: @id)
+      rescue StandardError
+        nil
+      end
 
       # Retrieve memories relevant to the incoming message and inject them
       # as a system message, so a new session starts with what earlier

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require "monitor"
 require "securerandom"
 require "time"
 
@@ -37,10 +38,13 @@ module Ask
 
       # @param state [Ask::State::Adapter] backing store
       # @param namespace [String] isolation scope (user id, project id, ...)
-      def initialize(state:, namespace:)
+      # @param max_entries [Integer, nil] when set, the oldest entries are
+      #   pruned once the namespace exceeds this many entries
+      def initialize(state:, namespace:, max_entries: nil)
         @state = state
         @namespace = namespace.to_s
-        @mutex = Mutex.new
+        @max_entries = max_entries
+        @mutex = Monitor.new
       end
 
       # @return [Ask::State::Adapter] the underlying adapter
@@ -67,6 +71,7 @@ module Ask
           entry = Entry.new(id: SecureRandom.uuid, content: content, metadata: metadata, created_at: Time.now)
           @state.set(entry_key(entry.id), entry.to_h)
           @state.set(index_key, (load_index + [entry.id]).to_json)
+          prune_oldest if @max_entries
           entry
         end
       end
@@ -114,6 +119,15 @@ module Ask
       end
 
       private
+
+      # Drop the oldest entries beyond the max_entries cap (called under the
+      # write mutex; delete re-enters it, which is safe).
+      def prune_oldest
+        current = entries
+        return if current.size <= @max_entries
+
+        current.first(current.size - @max_entries).each { |entry| delete(entry.id) }
+      end
 
       def entries
         load_index.filter_map { |id| load_entry(id) }

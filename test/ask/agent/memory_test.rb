@@ -304,6 +304,180 @@ module Ask
       ensure
         Ask::Agent::Chat.unstub(:new)
       end
+      # -----------------------------------------------------------------
+      # Memory: max_entries pruning
+      # -----------------------------------------------------------------
+
+      def test_memory_prunes_oldest_beyond_max_entries
+        capped = Memory.new(state: HashAdapter.new, namespace: "n", max_entries: 3)
+        5.times { |i| capped.write("fact #{i}") }
+
+        assert_equal 3, capped.count
+        assert_equal ["fact 4", "fact 3", "fact 2"], capped.list.map(&:content)
+      end
+
+      # -----------------------------------------------------------------
+      # MemoryExtractor
+      # -----------------------------------------------------------------
+
+      class StubChat
+        attr_reader :prompt
+
+        def initialize(content, raise_on_ask: false)
+          @content = content
+          @raise_on_ask = raise_on_ask
+        end
+
+        def ask(prompt)
+          raise "ask failed" if @raise_on_ask
+
+          @prompt = prompt
+          OpenStruct.new(content: @content)
+        end
+      end
+
+      def build_extractor(chat, **opts)
+        MemoryExtractor.new(model: "gpt-4o", memory: @memory, chat: chat, **opts)
+      end
+
+      def transcript(messages)
+        messages.map { |(role, content)| Ask::Message.new(role: role, content: content) }
+      end
+
+      def test_extractor_writes_facts_with_provenance
+        chat = StubChat.new(%q({"facts": ["The user prefers email", "Deploy window is Tuesday"]}))
+        extractor = build_extractor(chat)
+
+        result = extractor.extract(transcript: transcript([%i[user hi], %i[assistant hello]]), session_id: "sess-1")
+
+        assert_equal 2, result[:extracted].size
+        assert_empty result[:skipped]
+        assert_nil result[:error]
+        assert_equal 2, @memory.count
+        entry = @memory.list.first
+        assert_equal true, entry.metadata[:extracted]
+        assert_equal "sess-1", entry.metadata[:session_id]
+      end
+
+      def test_extractor_dedupes_against_existing_memory
+        @memory.write("The user prefers email over SMS")
+        chat = StubChat.new(%q({"facts": ["The user prefers email over SMS", "New fact"]}))
+        extractor = build_extractor(chat)
+
+        result = extractor.extract(transcript: transcript([%i[user hi]]), session_id: "s1")
+
+        assert_equal ["New fact"], result[:extracted]
+        assert_equal ["The user prefers email over SMS"], result[:skipped]
+        assert_equal 2, @memory.count
+      end
+
+      def test_extractor_caps_candidates
+        chat = StubChat.new(%q({"facts": ["a", "b", "c", "d"]}))
+        extractor = build_extractor(chat, max_candidates: 2)
+
+        result = extractor.extract(transcript: transcript([%i[user hi]]))
+
+        assert_equal %w[a b], result[:extracted]
+        assert_equal 2, @memory.count
+      end
+
+      def test_extractor_returns_empty_for_empty_transcript
+        chat = StubChat.new(%q({"facts": ["x"]}))
+        extractor = build_extractor(chat)
+
+        result = extractor.extract(transcript: [])
+
+        assert_equal [], result[:extracted]
+        assert_nil chat.prompt # the model was never called
+      end
+
+      def test_extractor_handles_unparseable_response
+        # First response is not JSON at all; fallback array extraction works.
+        chat = StubChat.new("Sure, here you go: [\"fact one\"]")
+        extractor = build_extractor(chat)
+
+        result = extractor.extract(transcript: transcript([%i[user hi]]))
+
+        assert_equal ["fact one"], result[:extracted]
+      end
+
+      def test_extractor_returns_error_result_on_garbage
+        chat = StubChat.new("no facts here")
+        extractor = build_extractor(chat)
+
+        result = extractor.extract(transcript: transcript([%i[user hi]]))
+
+        assert_empty result[:extracted]
+        assert_equal "no facts returned", result[:error]
+      end
+
+      def test_extractor_never_raises_on_chat_failure
+        chat = StubChat.new("", raise_on_ask: true)
+        extractor = build_extractor(chat)
+
+        result = extractor.extract(transcript: transcript([%i[user hi]]))
+
+        assert_empty result[:extracted]
+        assert_equal "ask failed", result[:error]
+      end
+
+      def test_extractor_filters_transcript_and_caps_messages
+        chat = StubChat.new(%q({"facts": []}))
+        extractor = build_extractor(chat, max_transcript_messages: 2)
+
+        extractor.extract(transcript: transcript([
+          %i[system system-noise],
+          %i[user first],
+          %i[tool tool-noise],
+          %i[assistant second],
+          %i[user third]
+        ]))
+
+        assert_match(/assistant: second/, chat.prompt)
+        assert_match(/user: third/, chat.prompt)
+        refute_match(/first/, chat.prompt)     # oldest dropped beyond cap
+        refute_match(/system-noise/, chat.prompt)
+        refute_match(/tool-noise/, chat.prompt)
+      end
+
+      # -----------------------------------------------------------------
+      # Session: memory_learning
+      # -----------------------------------------------------------------
+
+      def test_memory_learning_requires_memory
+        assert_raises(ArgumentError) do
+          Session.new(model: "gpt-4o", memory_learning: true)
+        end
+      end
+
+      def test_session_extracts_memories_after_run
+        # First Chat.new: the session's chat; second: the extractor's chat.
+        session_chat = TurnChat.new(ResponseMessage.new(content: "hello"))
+        extractor_chat = StubChat.new(%q({"facts": ["The user prefers email"]}))
+        Ask::Agent::Chat.stubs(:new).returns(session_chat, extractor_chat)
+
+        session = Session.new(model: "gpt-4o", memory: @memory, memory_learning: true)
+        session.run("Hi")
+
+        assert_equal 1, @memory.count
+        assert_equal "The user prefers email", @memory.list.first.content
+        assert_equal true, @memory.list.first.metadata[:extracted]
+      ensure
+        Ask::Agent::Chat.unstub(:new)
+      end
+
+      def test_session_without_learning_does_not_extract
+        session_chat = TurnChat.new(ResponseMessage.new(content: "hello"))
+        Ask::Agent::Chat.stubs(:new).returns(session_chat)
+
+        session = Session.new(model: "gpt-4o", memory: @memory)
+        session.run("Hi")
+
+        assert_equal 0, @memory.count
+      ensure
+        Ask::Agent::Chat.unstub(:new)
+      end
+
     end
   end
 end
