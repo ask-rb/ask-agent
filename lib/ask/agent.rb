@@ -47,6 +47,8 @@ module Ask
     autoload :MemoryWrite, "ask/agent/memory_write"
     autoload :MemorySearch, "ask/agent/memory_search"
     autoload :MemoryExtractor, "ask/agent/memory_extractor"
+    autoload :ToolOutputStore, "ask/agent/tool_output_store"
+    autoload :OutputRead, "ask/agent/output_read"
 
     module Middleware
       autoload :Base, "ask/agent/middleware/base"

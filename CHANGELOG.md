@@ -1,3 +1,23 @@
+## [0.36.0] — 2026-08-07
+
+### Added
+
+- **Large-output offloading — tool results never bloat the transcript.**
+  `Session.new(offload_large_outputs: true)` (or an Integer threshold,
+  default 4000 chars) stores tool messages above the threshold in a
+  state-backed store; the transcript keeps a short preview plus a reference
+  the model retrieves with the injected `output_read` tool:
+  - `Ask::Agent::ToolOutputStore` — pure KV on the same
+    `Ask::State::Adapter` as sessions/checkpoints/memory
+    (`output:<session_id>:<call_id>` + JSON index), works with every
+    backend; in-process Memory fallback when no `state:` is given. Stored
+    outputs are capped (`max_size:`, default 50,000 chars).
+  - `output_read` is exempt from offloading — its contract is to bring the
+    full output into context on demand.
+  - `Session#delete` cleans up the session's stored outputs.
+  - The loop now passes `session_id` to the tool executor (previously nil),
+    which offloading relies on.
+
 ## [0.35.0] — 2026-08-07
 
 ### Added

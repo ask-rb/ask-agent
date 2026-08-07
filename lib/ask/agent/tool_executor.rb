@@ -11,10 +11,12 @@ module Ask
 
       attr_reader :total_executions
 
-      def initialize(max_retries: 3, parallel: true)
+      def initialize(max_retries: 3, parallel: true, output_offload_threshold: nil, output_store: nil)
         @max_retries = max_retries
         @parallel = parallel
         @total_executions = 0
+        @output_offload_threshold = output_offload_threshold
+        @output_store = output_store
       end
 
       attr_writer :telemetry
@@ -185,6 +187,15 @@ module Ask
           result[:result].to_s
         end
 
+        # Large outputs never enter the transcript: store the full message
+        # and keep a short preview plus a reference the model can retrieve
+        # with the output_read tool. output_read's own result is exempt —
+        # its contract is to bring the full output into context on demand.
+        if @output_offload_threshold && message.length > @output_offload_threshold &&
+           tool_call.name != "output_read"
+          message = offload_message(message, tool_call.id)
+        end
+
         inner = result[:result]
         status = if result[:is_error] == true
           "error"
@@ -234,6 +245,15 @@ module Ask
         hash
       rescue => e
         { result: e.message, is_error: true, error: e.class.name }
+      end
+
+      # Store a large tool message in the output store and return a short
+      # preview that references it, so the transcript never carries the full
+      # output.
+      def offload_message(message, tool_call_id)
+        @output_store.store(@session_id, tool_call_id, message)
+        preview = message[0, 300]
+        "#{preview}\n...(output truncated: #{message.length} chars — full output via output_read id: \"#{tool_call_id}\")"
       end
 
       def retryable_error_name?(error_name)

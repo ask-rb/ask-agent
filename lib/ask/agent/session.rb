@@ -25,7 +25,8 @@ module Ask
                      skills_disclosure: true, approval: nil,
                      tool_call_repair: nil, checkpoints: false,
                      todos: false, plan_mode: false, memory: nil,
-                     memory_learning: false, **chat_options)
+                     memory_learning: false, offload_large_outputs: false,
+                     **chat_options)
         @id = id || SecureRandom.uuid
         @agent_dir = agent_dir
         @max_turns = max_turns
@@ -65,6 +66,18 @@ module Ask
         end
         @memory_learning = !!memory_learning
 
+        # Large-output offloading: tool results above a size threshold are
+        # stored in a ToolOutputStore (state adapter when present, else
+        # in-process) and the transcript keeps a preview + reference.
+        @offload_threshold = case offload_large_outputs
+        when true then 4000
+        when Integer then offload_large_outputs
+        else nil
+        end
+        @output_store = if @offload_threshold
+          ToolOutputStore.new(state: state || persistence || Ask::State::Memory.new)
+        end
+
         # Plan mode — research phase gated to read-only tools until a human
         # approves the model's plan (submitted via the exit_plan_mode tool).
         @plan_mode = plan_mode.is_a?(Hash) ? true : !!plan_mode
@@ -81,7 +94,12 @@ module Ask
         @tools = resolve_tools(tools)
         @chat = build_chat(model, system_prompt, @tools, **chat_options)
         @loop = Loop.new(max_turns: max_turns)
-        @tool_executor = ToolExecutor.new(max_retries: max_tool_retries, parallel: parallel_tools)
+        @tool_executor = ToolExecutor.new(
+          max_retries: max_tool_retries,
+          parallel: parallel_tools,
+          output_offload_threshold: @offload_threshold,
+          output_store: @output_store
+        )
         @compactor = compactor ? build_compactor(compactor) : nil
         @hooks = Hooks.new(hooks)
         @audit_log = build_audit_log(audit_log)
@@ -151,6 +169,9 @@ module Ask
       # @return [Ask::Agent::Memory, nil] durable memory (only when passed
       #   via the +memory:+ option)
       attr_reader :memory
+      # @return [Ask::Agent::ToolOutputStore, nil] store for offloaded large
+      #   tool outputs (only when large-output offloading is enabled)
+      attr_reader :output_store
 
       def run(message, tools: nil, reset: true)
         raise "Session deleted" if @deleted
@@ -407,6 +428,7 @@ module Ask
       def delete
         @deleted = true
         @checkpoint_store&.delete(@id)
+        @output_store&.delete(@id)
         @state&.delete(@id)
       end
 
@@ -771,6 +793,9 @@ module Ask
         if @memory
           resolved << MemoryWrite.new(memory: @memory, session_id: @id) unless resolved.any? { |t| t.name == "memory_write" }
           resolved << MemorySearch.new(memory: @memory) unless resolved.any? { |t| t.name == "memory_search" }
+        end
+        if @output_store
+          resolved << OutputRead.new(store: @output_store, session_id: @id) unless resolved.any? { |t| t.name == "output_read" }
         end
         resolved
       end
