@@ -1,3 +1,24 @@
+## [0.33.0] — 2026-08-06
+
+### Added
+
+- **Durable memory — facts that outlive sessions.** `Ask::Agent::Memory`
+  stores namespaced entries on the same `Ask::State::Adapter` as sessions
+  and checkpoints (no new dependencies, no ask-rag mandate):
+  - Storage: one key per entry (`memory:<namespace>:<id>`) plus a JSON
+    index key for enumeration — pure KV, works with every backend
+    (SQLite/Redis/Postgres/MySQL/custom adapters) and with the in-process
+    Memory store.
+  - `Memory#write` (dedupes identical content), `#search` (keyword
+    substring match, ranked by matched terms, punctuation-stripped
+    queries), `#list`, `#delete`, `#count`. Namespaces isolate tenants and
+    agent roles.
+  - **Session integration**: `Session.new(memory: memory)` injects
+    `memory_write` (stamps the session id as provenance) and
+    `memory_search` tools, and **injects relevant memories as a system
+    message at run start** — session B starts knowing what session A
+    learned. Opt-in; sessions without `memory:` are unaffected.
+
 ## [0.32.0] — 2026-08-06
 
 ### Added

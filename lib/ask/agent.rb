@@ -43,6 +43,9 @@ module Ask
     autoload :TodoList, "ask/agent/todo_list"
     autoload :TodoWrite, "ask/agent/todo_write"
     autoload :ExitPlanMode, "ask/agent/exit_plan_mode"
+    autoload :Memory, "ask/agent/memory"
+    autoload :MemoryWrite, "ask/agent/memory_write"
+    autoload :MemorySearch, "ask/agent/memory_search"
 
     module Middleware
       autoload :Base, "ask/agent/middleware/base"

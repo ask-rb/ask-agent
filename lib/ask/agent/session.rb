@@ -24,7 +24,7 @@ module Ask
                      agent_dir: nil, evaluator: nil, audit_log: nil,
                      skills_disclosure: true, approval: nil,
                      tool_call_repair: nil, checkpoints: false,
-                     todos: false, plan_mode: false, **chat_options)
+                     todos: false, plan_mode: false, memory: nil, **chat_options)
         @id = id || SecureRandom.uuid
         @agent_dir = agent_dir
         @max_turns = max_turns
@@ -53,6 +53,10 @@ module Ask
         @todos_enabled = !!todos
         @todo_list = TodoList.new if @todos_enabled
         @todo_list&.subscribe { |entries| emit(Events::TodoUpdated.new(todos: entries)) }
+
+        # Durable memory (memory_write / memory_search tools). An instance
+        # with its own namespace and state adapter; nil disables memory.
+        @memory = memory
 
         # Plan mode — research phase gated to read-only tools until a human
         # approves the model's plan (submitted via the exit_plan_mode tool).
@@ -137,6 +141,9 @@ module Ask
       # @return [Ask::Agent::TodoList, nil] session task list (only when
       #   todos are enabled)
       attr_reader :todo_list
+      # @return [Ask::Agent::Memory, nil] durable memory (only when passed
+      #   via the +memory:+ option)
+      attr_reader :memory
 
       def run(message, tools: nil, reset: true)
         raise "Session deleted" if @deleted
@@ -153,6 +160,9 @@ module Ask
         emit(Events::SessionStart.new)
 
         active_tools = @tools
+
+        # Retrieve relevant memories from previous sessions into context.
+        inject_memories(message) if reset && @memory
 
         if active_tools.empty? && !@_no_tools_instructed
           @chat.add_message(role: :system, content: "You have no tools available. Do not claim you can look up information or use tools of any kind. Just respond based on your existing knowledge.")
@@ -474,6 +484,19 @@ module Ask
 
       # --- Plan mode ---
 
+      # Retrieve memories relevant to the incoming message and inject them
+      # as a system message, so a new session starts with what earlier
+      # sessions learned.
+      def inject_memories(message)
+        hits = @memory.search(message.to_s, limit: 5)
+        return if hits.empty?
+
+        @chat.add_message(
+          role: :system,
+          content: "Relevant memories from previous sessions:\n" + hits.map { |e| "- #{e.content}" }.join("\n")
+        )
+      end
+
       # @return [Boolean] whether the session is in plan mode (research
       #   phase; non-read-only tools are blocked until the plan is approved)
       def plan_mode? = @plan_mode
@@ -723,6 +746,10 @@ module Ask
             plan_queue: @plan_queue,
             on_submit: ->(plan) { emit(Events::PlanProposed.new(plan: plan)) }
           ) unless resolved.any? { |t| t.name == "exit_plan_mode" }
+        end
+        if @memory
+          resolved << MemoryWrite.new(memory: @memory, session_id: @id) unless resolved.any? { |t| t.name == "memory_write" }
+          resolved << MemorySearch.new(memory: @memory) unless resolved.any? { |t| t.name == "memory_search" }
         end
         resolved
       end
