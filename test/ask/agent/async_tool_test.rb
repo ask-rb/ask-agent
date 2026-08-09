@@ -48,7 +48,7 @@ class AsyncToolTest < Minitest::Test
       @messages << {role: role, content: content, tool_call_id: tool_call_id}
     end
 
-    def ask(_message)
+    def ask(_message, attachments: nil)
       @asks += 1
       if @asks == 1
         Ask::Agent::ResponseMessage.new(

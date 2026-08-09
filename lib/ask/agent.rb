@@ -18,6 +18,7 @@ module Ask
     class ToolExecutionError < Error; end
     class CompactionFailed < Error; end
     class SessionNotPersisted < Error; end
+    class UnsupportedAttachmentError < Error; end
 
     class UnknownAgent < Error; end
 

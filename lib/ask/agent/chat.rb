@@ -53,8 +53,9 @@ module Ask
         @prompt_caching = prompt_caching.nil? ? config.prompt_caching : prompt_caching
       end
 
-      def ask(message = nil, &block)
-        @messages << Ask::Message.new(role: :user, content: message.to_s) if message
+      def ask(message = nil, attachments: nil, &block)
+        validate_attachment_modalities!(attachments)
+        @messages << Ask::Message.new(role: :user, content: merge_attachments(message, attachments)) if message || attachments
 
         stream = block_given?
         tool_defs = @tools.map { |t| Ask::ToolDef.from_tool(t) }
@@ -79,10 +80,11 @@ module Ask
         response_msg
       end
 
-      def add_message(role:, content: nil, tool_call_id: nil, tool_calls: nil)
+      def add_message(role:, content: nil, tool_call_id: nil, tool_calls: nil, attachments: nil)
+        validate_attachment_modalities!(attachments) if role == :user
         @messages << Ask::Message.new(
           role: role,
-          content: content,
+          content: merge_attachments(content, attachments),
           tool_call_id: tool_call_id,
           tool_calls: tool_calls
         )
@@ -111,6 +113,42 @@ module Ask
       private
 
       MAX_CHAT_RETRIES = 3
+
+      # Merge attachments into message content as content blocks: a plain
+      # string becomes a Text block followed by the attachment blocks;
+      # Array content has the blocks appended. Returns the content
+      # unchanged when there are no attachments.
+      def merge_attachments(content, attachments)
+        return content if attachments.nil? || attachments.empty?
+
+        blocks = content.is_a?(Array) ? content.dup : (content ? [Ask::Content::Text.new(content.to_s)] : [])
+        Ask::Attachment.wrap_all(attachments).each do |item|
+          blocks << (item.is_a?(Ask::Attachment) ? item.to_content : item)
+        end
+        blocks
+      end
+
+      # :inline attachments must be within the model's input modalities.
+      # :context attachments are plain text (a manifest line) and always
+      # supported. The check is skipped when the catalog has no modality
+      # info for the model.
+      def validate_attachment_modalities!(attachments)
+        return if attachments.nil? || attachments.empty?
+
+        inline = Ask::Attachment.wrap_all(attachments).select { |a| a.is_a?(Ask::Attachment) && a.inline? }
+        return if inline.empty?
+
+        modalities = @model_info.respond_to?(:modalities) ? @model_info.modalities : nil
+        supported = modalities.is_a?(Hash) ? Array(modalities[:input] || modalities["input"]) : []
+        return if supported.empty? || supported.include?("*")
+
+        unsupported = inline.reject { |a| supported.include?(a.type.to_s) }
+        return if unsupported.empty?
+
+        raise Ask::Agent::UnsupportedAttachmentError,
+          "Model #{@model_id} cannot receive #{unsupported.map(&:type).uniq.join(', ')} attachments " \
+          "(supported input modalities: #{supported.join(', ')})"
+      end
 
       def provider
         @test_provider || @provider ||= build_provider

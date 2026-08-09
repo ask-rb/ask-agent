@@ -196,7 +196,7 @@ module Ask
       #   (only when the +artifacts:+ option is enabled)
       attr_reader :artifact_store
 
-      def run(message, tools: nil, reset: true)
+      def run(message, tools: nil, reset: true, attachments: nil)
         raise "Session deleted" if @deleted
         raise "Session already running" if @running
 
@@ -230,6 +230,7 @@ module Ask
 	          response = @loop.run_turn(
 	            chat: @chat,
 	            message: message,
+	            attachments: attachments,
 	            tools: active_tools,
 	            tool_executor: @tool_executor,
 	            compactor: @compactor,
@@ -443,7 +444,7 @@ module Ask
         data[:messages].each do |msg|
           session.chat.add_message(
             role: msg[:role].to_sym,
-            content: msg[:content],
+            content: deserialize_content(msg[:content]),
             tool_call_id: msg[:tool_call_id]
           )
         end
@@ -662,8 +663,11 @@ end
       # @param message [String]
       # @param expected_turn_id [Integer, nil] the turn id the caller
       #   believes is current; nil skips the check
+      # @param attachments [Array<Ask::Attachment>, nil] files to attach
+      #   (applied when the session is idle; queued steers keep the
+      #   message text only — the loop resolves queued messages as text)
       # @return [Hash] {status: :stale|:queued|:steered, turn_id: Integer}
-      def steer(message, expected_turn_id: nil)
+      def steer(message, expected_turn_id: nil, attachments: nil)
         @steer_mutex.synchronize do
           if expected_turn_id && expected_turn_id != @turn_id
             return { status: :stale, turn_id: @turn_id }
@@ -673,7 +677,7 @@ end
             return { status: :queued, turn_id: @turn_id }
           end
         end
-        @chat.add_message(role: :user, content: message.to_s)
+        @chat.add_message(role: :user, content: message.to_s, attachments: attachments)
         { status: :steered, turn_id: @turn_id }
       end
 
@@ -959,7 +963,7 @@ end
         data[:messages].each do |msg|
           target.chat.add_message(
             role: msg[:role].to_sym,
-            content: msg[:content],
+            content: self.class.deserialize_content(msg[:content]),
             tool_call_id: msg[:tool_call_id]
           )
         end
@@ -977,13 +981,26 @@ end
         @tools.reject { |t| t.is_a?(Ask::Skills::LoadSkillTool) }
       end
 
+      # Persist content blocks as their +to_h+ hashes so attachments
+      # survive save/load; plain messages stay strings.
+      def self.serialize_content(message)
+        message.content_blocks ? message.content_blocks.map(&:to_h) : message.content.to_s
+      end
+
+      # Rebuild message content from a persisted value: block hashes are
+      # reconstructed via Ask::Content.from_h (deep_symbolize_keys may have
+      # symbol keys — from_h normalizes).
+      def self.deserialize_content(content)
+        content.is_a?(Array) ? content.map { |block| Ask::Content.from_h(block) } : content
+      end
+
       def persist!
         payload = {
           id: @id,
           messages: @chat.messages.map { |m|
             {
               role: m.role,
-              content: m.content.to_s,
+              content: self.class.serialize_content(m),
               tool_call_id: m.tool_call_id,
               created_at: Time.now.iso8601
             }

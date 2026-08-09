@@ -60,7 +60,7 @@ module Ask
 
         def with_instructions(*) = self
 
-        def ask(message = nil)
+        def ask(message = nil, attachments: nil)
           @messages << Ask::Message.new(role: :user, content: message.to_s) if message
           response = @responses.shift || ResponseMessage.new(content: "done")
           @messages << Ask::Message.new(role: :assistant, content: response.content)

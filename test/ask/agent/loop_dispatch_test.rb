@@ -42,7 +42,7 @@ class LoopToolExecutorDispatchTest < Minitest::Test
     calls = 0
     chat = Object.new
     chat.define_singleton_method(:add_message) { |**| nil }
-    chat.define_singleton_method(:ask) do |_msg, &block|
+    chat.define_singleton_method(:ask) do |_msg, attachments: nil, &block|
       calls += 1
       with_tools = calls == 1
       OpenStruct.new(

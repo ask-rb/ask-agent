@@ -26,7 +26,7 @@ module Ask
           @raise_on_ask = raise_on_ask
         end
 
-        def ask(message = nil)
+        def ask(message = nil, attachments: nil)
           @ask_count += 1
           raise "repair ask failed" if @raise_on_ask
 

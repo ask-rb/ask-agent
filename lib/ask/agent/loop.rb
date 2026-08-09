@@ -17,12 +17,12 @@ module Ask
       @max_consecutive_tool_turns = max_consecutive_tool_turns
       end
 
-      def run_turn(chat:, message:, tools:, tool_executor:, compactor:, hooks:, event_emitter:, session_id: nil, persist: nil, tool_call_repair: nil, steer_source: nil)
+      def run_turn(chat:, message:, tools:, tool_executor:, compactor:, hooks:, event_emitter:, session_id: nil, persist: nil, tool_call_repair: nil, steer_source: nil, attachments: nil)
         raise MaxTurnsExceeded if @turn_count >= @max_turns
 
         event_emitter.emit(Events::TurnStart.new)
 
-        response = chat.ask(message) do |chunk|
+        response = chat.ask(message, attachments: attachments) do |chunk|
           if chunk.content.to_s.strip.length > 0
             event_emitter.emit(Events::TextDelta.new(content: chunk.content))
           end

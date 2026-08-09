@@ -64,7 +64,7 @@ class LoopAbortTest < Minitest::Test
 
     def add_message(*) = nil
 
-    def ask(_message)
+    def ask(_message, attachments: nil)
       @asks += 1
       @emitter.aborted = true if @asks > 1
       Ask::Agent::ResponseMessage.new(
