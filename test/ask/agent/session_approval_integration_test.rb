@@ -280,4 +280,132 @@ class SessionApprovalIntegrationTest < Minitest::Test
     assert_empty s.approval_queue.pending_actions
     refute s.pending_tools?
   end
+
+  # --- Custom queue: default callbacks are wired ---
+
+  class EmittingQueue < Ask::Agent::ApprovalQueue
+    attr_reader :submitted, :changed
+
+    def initialize(*)
+      super
+      @submitted = []
+      @changed = []
+    end
+
+    def submit(...)
+      id = super
+      @submitted << self[id]
+      id
+    end
+
+    private
+
+    def apply(action)
+      result = super
+      @changed << action.with(status: :approved)
+      result
+    end
+
+    def reject_action(action)
+      result = super
+      @changed << action.with(status: :rejected)
+      result
+    end
+  end
+
+  def test_custom_queue_gets_default_callbacks_and_applies_on_approve
+    chat = build_chat_stub(sequence: [
+      { tool_calls: { "call_1" => stub_tool_call(name: "email", arguments: '{"to":"x@y.com","body":"hi"}') } },
+      { content: "done" } # follow-up turn after approval — no more tool calls
+    ])
+    Ask::Agent::Chat.stubs(:new).returns(chat)
+
+    queue = EmittingQueue.new
+    s = Ask::Agent::Session.new(
+      model: "gpt-4o", tools: [EmailTool.new],
+      approval: { queue: queue, auto_approve: {} }
+    )
+    s.run("Send an email to x")
+
+    assert_same queue, s.approval_queue
+    assert_equal 1, queue.submitted.size
+    assert_equal 1, queue.pending_actions.size
+
+    # Approving the custom queue action executes the underlying tool call
+    # (the session wired its default on_approve callback onto the queue).
+    queue.approve(queue.pending_actions.first.id)
+
+    assert_empty queue.pending_actions
+    refute s.pending_tools?
+    assert_equal 1, queue.changed.size
+    assert_equal :approved, queue.changed.first.status
+  end
+
+  def test_custom_queue_reject_notifies_conversation
+    chat = build_chat_stub(sequence: [
+      { tool_calls: { "call_1" => stub_tool_call(name: "email", arguments: '{"to":"x@y.com","body":"hi"}') } },
+      { content: "done" } # follow-up turn after rejection — no more tool calls
+    ])
+    Ask::Agent::Chat.stubs(:new).returns(chat)
+
+    queue = EmittingQueue.new
+    s = Ask::Agent::Session.new(
+      model: "gpt-4o", tools: [EmailTool.new],
+      approval: { queue: queue, auto_approve: {} }
+    )
+    s.run("Send an email to x")
+
+    queue.reject(queue.pending_actions.first.id)
+
+    assert_empty queue.pending_actions
+    refute s.pending_tools?
+    assert_equal :rejected, queue.changed.first.status
+  end
+
+  # --- Pending registration happens at submit time (race closure) ---
+
+  def test_pending_tool_registered_at_submit_time
+    chat = build_chat_stub(sequence: [
+      { tool_calls: { "call_1" => stub_tool_call(name: "email") } }
+    ])
+    Ask::Agent::Chat.stubs(:new).returns(chat)
+
+    s = Ask::Agent::Session.new(
+      model: "gpt-4o", tools: [EmailTool.new],
+      approval: { auto_approve: {} }
+    )
+    s.run("Send an email to x")
+
+    # The pending call was registered the moment the action was queued, so
+    # an approval landing mid-execution still finds something to complete.
+    assert s.pending_tools?
+    assert s.instance_variable_get(:@pending_tools).key?("call_1")
+  end
+
+  def test_late_loop_registration_after_completion_is_skipped
+    chat = build_chat_stub(sequence: [
+      { tool_calls: { "call_1" => stub_tool_call(name: "email", arguments: '{"to":"x@y.com","body":"hi"}') } },
+      { content: "done" }
+    ])
+    Ask::Agent::Chat.stubs(:new).returns(chat)
+
+    s = Ask::Agent::Session.new(
+      model: "gpt-4o", tools: [EmailTool.new],
+      approval: { auto_approve: {} }
+    )
+    s.run("Send an email to x")
+    queue = s.approval_queue
+
+    # Simulate the executor racing: completion lands before the loop's own
+    # registration, which must then be skipped (no ghost pending call).
+    action = queue.pending_actions.first
+    queue.approve(action.id)
+    refute s.pending_tools?
+
+    s.send(:register_pending_tool, action.tool_call_id,
+           tool_name: "email", message: "Pending approval", status: "pending",
+           tool_call_id: action.tool_call_id, action_id: action.id)
+
+    refute s.pending_tools?, "late registration must not resurrect a completed call"
+  end
 end

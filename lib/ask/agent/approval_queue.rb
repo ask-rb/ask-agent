@@ -55,9 +55,24 @@ module Ask
       #   auto-approval rules keyed by tool name. An action is auto-applied
       #   only when its tool is listed here with +true+ AND the action itself
       #   is marked auto_approvable.
-      def initialize(on_approve: nil, on_reject: nil, auto_approve: nil)
+      # @!attribute [rw] on_approve
+      #   Called with an {Action} when it is approved and applied. The
+      #   session wires this to execute the real tool call; can be replaced
+      #   after construction (e.g. by queue subclasses that also emit events).
+      # @!attribute [rw] on_reject
+      #   Called with an {Action} when it is rejected.
+      # @!attribute [rw] on_submit
+      #   Called with the new {Action} when it is submitted — BEFORE the
+      #   auto-approval drain runs, so subscribers can register the pending
+      #   call before it is applied. The session wires this to register the
+      #   pending tool call, closing the race where an approval lands while
+      #   the executor is still in flight.
+      attr_accessor :on_approve, :on_reject, :on_submit
+
+      def initialize(on_approve: nil, on_reject: nil, auto_approve: nil, on_submit: nil)
         @on_approve = on_approve
         @on_reject = on_reject
+        @on_submit = on_submit
         @auto_approve = auto_approve || {}
         @actions = {}
         @next_id = 1
@@ -89,6 +104,11 @@ module Ask
           @actions[action.id] = action
           action
         end
+
+        # Notify BEFORE the drain: an auto-approvable action is applied
+        # (and possibly completed) inside drain, and listeners need to
+        # observe the submission first.
+        @on_submit&.call(action)
 
         drain
         action.id

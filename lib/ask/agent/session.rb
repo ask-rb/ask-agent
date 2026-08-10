@@ -6,6 +6,10 @@ require "time"
 module Ask
   module Agent
     class Session
+      # Max ids remembered as "recently completed" to guard against late
+      # loop registrations resurrecting ghost pending calls.
+      RECENTLY_COMPLETED_MAX = 200
+
       attr_reader :id, :chat, :tools, :turn_count, :created_at, :messages
       attr_reader :tool_calls_made, :total_input_tokens, :total_output_tokens, :total_cost
 
@@ -39,6 +43,7 @@ module Ask
         @deleted = false
         @abort_requested = false
         @pending_tools = {}
+        @recently_completed = []
         @pending_mutex = Mutex.new
         @followup_pending = false
         @turn_count = 0
@@ -63,7 +68,6 @@ module Ask
         @todos_enabled = !!todos
         @todo_list = TodoList.new if @todos_enabled
         @todo_list&.subscribe { |entries| emit(Events::TodoUpdated.new(todos: entries)) }
-
         # Durable memory (memory_write / memory_search tools). An instance
         # with its own namespace and state adapter; nil disables memory.
         @memory = memory
@@ -107,7 +111,19 @@ module Ask
         end
         @plan_queue = ApprovalQueue.new(
           on_approve: ->(action) { approve_plan(action) },
-          on_reject: ->(action) { reject_plan(action) }
+          on_reject: ->(action) { reject_plan(action) },
+          # Same race closure as the tool approval queue: register the
+          # pending call at submit time so plan approvals land even when
+          # the executor is still in flight.
+          on_submit: ->(action) {
+            register_pending_tool(action.tool_call_id, {
+              tool_name: action.tool_name,
+              message: action.message || "Plan awaiting approval",
+              status: "pending",
+              tool_call_id: action.tool_call_id,
+              action_id: action.id
+            })
+          }
         ) if @plan_mode
 
         @tools = resolve_tools(tools)
@@ -689,10 +705,19 @@ end
       # --- Async (pending) tools ---
 
       # Registers a pending tool call (called by the loop when a tool
-      # returned Ask::Result.pending). The background work completes later
-      # via #complete_pending_tool.
+      # returned Ask::Result.pending, or at approval-queue submit time).
+      # The background work completes later via #complete_pending_tool.
+      #
+      # A call can be resolved (approved/rejected) while the executor is
+      # still in flight; when the loop then registers the same call, the
+      # registration is skipped so no ghost pending entry is left behind.
       def register_pending_tool(tool_call_id, result)
         @pending_mutex.synchronize do
+          return if @recently_completed.include?(tool_call_id)
+          if (action_id = result[:action_id]) && @approval_queue
+            action = @approval_queue[action_id]
+            return if action && action.status != :pending
+          end
           @pending_tools[tool_call_id] = result
         end
         emit(Events::ToolPending.new(name: result[:tool_name], id: tool_call_id))
@@ -717,6 +742,12 @@ end
         follow_up = @pending_mutex.synchronize do
           pending = @pending_tools.delete(tool_call_id)
           return false unless pending
+
+          # Remember the id briefly so a late loop registration (from a
+          # completion that landed while the executor was in flight) cannot
+          # resurrect it as a ghost pending call.
+          @recently_completed << tool_call_id
+          @recently_completed.shift if @recently_completed.size > RECENTLY_COMPLETED_MAX
 
           @chat.add_message(
             role: :tool,
@@ -805,6 +836,24 @@ end
             on_reject: ->(action) { reject_pending_action(action) }
           )
         end
+
+        # Custom queues (subclasses, event-emitting wrappers) may come
+        # without callbacks — wire the session's defaults so approvals
+        # actually execute the tool call.
+        queue.on_approve ||= ->(action) { apply_approved_action(action) }
+        queue.on_reject ||= ->(action) { reject_pending_action(action) }
+        # Register the pending tool call the moment the action is queued —
+        # before the auto-approval drain — so completions always match even
+        # when an approval lands while the executor is still in flight.
+        queue.on_submit ||= ->(action) {
+          register_pending_tool(action.tool_call_id, {
+            tool_name: action.tool_name,
+            message: action.message || "Pending approval",
+            status: "pending",
+            tool_call_id: action.tool_call_id,
+            action_id: action.id
+          })
+        }
 
         policy = Ask::Agent::Policies::ApprovalPolicy.new(
           queue: queue,

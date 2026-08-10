@@ -1,3 +1,26 @@
+## [0.39.0] — 2026-08-10
+
+### Fixed
+
+- **Approval race: completing a queued tool call now always lands.**
+  The approval policy queues a tool call inside the executor (before_tool
+  hook), but the loop only registered the pending call *after* the executor
+  returned. An approval landing in that window found nothing to complete —
+  the call was then registered as a ghost pending entry and the turn never
+  settled. Two changes close it:
+  - `ApprovalQueue` gains an `on_submit` callback that fires **before** the
+    auto-approval drain; `Session#build_approval` (and the plan queue) wire
+    it to `register_pending_tool`, so the pending call exists the moment the
+    action is queued.
+  - `Session#register_pending_tool` skips re-registration for calls that
+    were already resolved (`action_id` check) or recently completed
+    (bounded `@recently_completed` set), so a late loop registration cannot
+    resurrect a completed call.
+
+### Added
+
+- `ApprovalQueue#on_submit` accessor and `on_submit:` initializer argument.
+
 ## [0.38.0] — 2026-08-07
 
 ### Added

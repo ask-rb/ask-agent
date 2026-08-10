@@ -203,4 +203,29 @@ class ApprovalQueueTest < Minitest::Test
     queue.reject(id)
     assert_equal :rejected, queue[id].status
   end
+
+  # --- on_submit fires before the drain (race closure) ---
+
+  def test_on_submit_fires_before_auto_approval_drain
+    order = []
+    queue = Ask::Agent::ApprovalQueue.new(
+      on_submit: ->(action) { order << :submit },
+      on_approve: ->(action) { order << :apply },
+      auto_approve: { "safe" => true }
+    )
+    queue.submit(tool_call_id: "call_1", tool_name: "safe", auto_approvable: true)
+
+    # The submit observer must observe the action before it is applied by
+    # the drain — otherwise a completion triggered inside apply would find
+    # nothing to complete.
+    assert_equal %i[submit apply], order
+  end
+
+  def test_on_submit_fires_for_manual_gate
+    order = []
+    queue = Ask::Agent::ApprovalQueue.new(on_submit: ->(action) { order << action.id })
+    id = queue.submit(tool_call_id: "call_1", tool_name: "manual")
+    assert_equal [id], order
+    assert queue.pending?(id)
+  end
 end
