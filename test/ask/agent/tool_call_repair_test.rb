@@ -109,6 +109,23 @@ module Ask
         assert_match(/must be a JSON object/, ToolCallRepair.repair_info(tc, [@tool]))
       end
 
+      def test_repair_info_wrong_parameter_names_is_repairable_with_the_expected_names
+        # The real-model failure: a call with a typo'd parameter name
+        # must report what was expected, so the model corrects the call
+        # instead of guessing.
+        tc = tool_call("c1", "repair_test", '{"value": 1, "vlaue": 2}')
+        info = ToolCallRepair.repair_info(tc, [@tool])
+        assert_match(/unknown parameters: :vlaue/, info)
+        assert_match(/expected: :value/, info)
+      end
+
+      def test_repair_info_missing_required_parameters_is_repairable
+        tc = tool_call("c1", "repair_test", "{}")
+        info = ToolCallRepair.repair_info(tc, [@tool])
+        assert_match(/missing required parameters: :value/, info)
+        assert_match(/expected: :value/, info)
+      end
+
       # -----------------------------------------------------------------
       # ToolCallRepair#call
       # -----------------------------------------------------------------

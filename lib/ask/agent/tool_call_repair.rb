@@ -32,18 +32,24 @@ module Ask
       # @param tools [Array<Object>]
       # @return [String, nil] why the call is repairable, or nil when it is
       #   well-formed and executable
+      # Why a call is invalid, in a form the model can act on. This is
+      # schema-aware: the tool's own validation names what was expected
+      # ("unknown parameters: :titile — expected: :project_id, :title"),
+      # so the model corrects the call instead of guessing.
       def self.repair_info(tool_call, tools)
-        unless tools.any? { |t| t.respond_to?(:name) && t.name == tool_call.name }
-          return "unknown tool '#{tool_call.name}'"
-        end
+        tool = tools.find { |t| t.respond_to?(:name) && t.name == tool_call.name }
+        return "unknown tool '#{tool_call.name}'" unless tool
 
-        args = tool_call.arguments
-        return nil if args.is_a?(Hash)
+        parsed =
+          if tool_call.arguments.is_a?(Hash)
+            tool_call.arguments
+          else
+            JSON.parse(tool_call.arguments.to_s)
+          end
+        return "arguments must be a JSON object, got #{parsed.class}" unless parsed.is_a?(Hash)
+        return nil unless tool.respond_to?(:validate)
 
-        parsed = JSON.parse(args.to_s)
-        return nil if parsed.is_a?(Hash)
-
-        "arguments must be a JSON object, got #{parsed.class}"
+        tool.validate(parsed.transform_keys(&:to_sym))
       rescue JSON::ParserError => e
         "arguments are not valid JSON: #{e.message}"
       end
