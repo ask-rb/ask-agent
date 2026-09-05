@@ -55,7 +55,13 @@ module Ask
 
       def ask(message = nil, attachments: nil, &block)
         validate_attachment_modalities!(attachments)
-        @messages << Ask::Message.new(role: :user, content: merge_attachments(message, attachments)) if message || attachments
+        # Blank messages carry no content and strict OpenAI-compatible
+        # gateways reject `{"role":"user","content":""}` with 400
+        # ("user message must have content"). Skip them so tool-result
+        # follow-ups (Session#run_follow_up → ask("")) call the LLM with
+        # the existing history only.
+        has_message = message && !message.to_s.strip.empty?
+        @messages << Ask::Message.new(role: :user, content: merge_attachments(message, attachments)) if has_message || attachments
 
         stream = block_given?
         tool_defs = @tools.map { |t| Ask::ToolDef.from_tool(t) }

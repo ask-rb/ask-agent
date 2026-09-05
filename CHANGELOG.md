@@ -1,3 +1,9 @@
+## [0.40.10] — 2026-09-05
+
+### Fixed
+
+- **`Chat#ask` no longer appends an empty user message for blank input.** The guard `if message || attachments` passed for empty strings (truthy in Ruby), so tool-result follow-ups (`Session#run_follow_up` → `ask("")`) sent `{"role":"user","content":""}`. Strict OpenAI-compatible gateways (e.g. Command Code / LiteLLM) reject it with 400 "user message must have content". Blank messages are now skipped (whitespace-only included); attachments-only asks are unchanged.
+
 ## [0.40.0] — 2026-08-10
 
 ### Fixed

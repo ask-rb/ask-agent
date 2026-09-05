@@ -90,6 +90,34 @@ class ChatTest < Minitest::Test
     assert_equal "Hello", @chat.messages.first.content
   end
 
+  def test_ask_with_blank_message_does_not_add_empty_user_message
+    stub_chat_provider(@chat)
+
+    @chat.add_message(role: :user, content: "finalize")
+    @chat.ask("")
+
+    user_messages = @chat.messages.select { |m| m.role == :user }
+    assert_equal 1, user_messages.length, 'ask("") must not append an empty user message'
+  end
+
+  def test_ask_with_whitespace_message_does_not_add_user_message
+    stub_chat_provider(@chat)
+
+    @chat.ask("   ")
+
+    assert_empty @chat.messages.select { |m| m.role == :user }
+  end
+
+  def test_ask_with_real_message_adds_user_message
+    stub_chat_provider(@chat)
+
+    @chat.ask("Hello")
+
+    user_messages = @chat.messages.select { |m| m.role == :user }
+    assert_equal 1, user_messages.length
+    assert_equal "Hello", user_messages.first.content
+  end
+
   def test_add_message_with_tool_results
     @chat.add_message(role: :tool, content: "42", tool_call_id: "call_1")
     assert_equal 1, @chat.messages.length
