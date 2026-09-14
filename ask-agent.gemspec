@@ -24,7 +24,7 @@ Gem::Specification.new do |spec|
 
   spec.add_dependency "ask-core", ">= 0.11.4"
   spec.add_dependency "ask-state-providers", ">= 0.4.6"
-  spec.add_dependency "ask-llm-providers", ">= 0.13.4"
+  spec.add_dependency "ask-llm-providers", ">= 0.13.7"
   spec.add_dependency "ask-tools", ">= 0.6.2"
   spec.add_dependency "ask-skills", ">= 0.1"
   spec.add_dependency "ask-instrumentation", ">= 0.1"
