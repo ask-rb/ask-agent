@@ -128,3 +128,72 @@ class LoopAbortTest < Minitest::Test
     assert_equal "done", result
   end
 end
+
+class LoopWhitespaceChunkTest < Minitest::Test
+  # Providers stream the space in front of a number as its own chunk, so
+  # "the balance is due 45 days" arrives as "due", " ", "45". Treating a
+  # whitespace-only chunk as nothing to say glues the words around it back
+  # together and the customer reads "due45 days".
+  class SpaceOnlyChunks
+    def add_message(*) = nil
+
+    def ask(_message, attachments: nil)
+      ["The balance is due", " ", "45", " days before travel."].each do |text|
+        yield Ask::Agent::ChatChunk.new(content: text, tool_calls: {}, thinking: nil,
+                                       input_tokens: nil, output_tokens: nil)
+      end
+
+      Ask::Agent::ResponseMessage.new(content: "The balance is due 45 days before travel.",
+                                      tool_calls: {}, tool_results: {}, thinking: nil,
+                                      input_tokens: 1, output_tokens: 1, cost: 0.0)
+    end
+  end
+
+  class CollectingEmitter
+    attr_reader :deltas, :thinking
+
+    def initialize
+      @deltas = []
+      @thinking = []
+    end
+
+    def emit(event)
+      @deltas << event.content if event.is_a?(Ask::Agent::Events::TextDelta)
+      @thinking << event.content if event.is_a?(Ask::Agent::Events::ThinkingDelta)
+    end
+  end
+
+  def test_whitespace_only_chunks_reach_the_text_delta_stream
+    emitter = CollectingEmitter.new
+    loop = Ask::Agent::Loop.new(max_turns: 5)
+
+    loop.run_turn(chat: SpaceOnlyChunks.new, message: "hi", tools: [], tool_executor: stub,
+                  compactor: nil, hooks: Ask::Agent::Hooks.new({}), event_emitter: emitter)
+
+    assert_equal "The balance is due 45 days before travel.", emitter.deltas.join
+  end
+
+  def test_whitespace_only_thinking_chunks_reach_the_thinking_stream
+    emitter = CollectingEmitter.new
+    loop = Ask::Agent::Loop.new(max_turns: 5)
+
+    loop.run_turn(chat: ThinkingOnlyChunks.new, message: "hi", tools: [], tool_executor: stub,
+                  compactor: nil, hooks: Ask::Agent::Hooks.new({}), event_emitter: emitter)
+
+    assert_equal [" ", "weighing the options"], emitter.thinking
+  end
+
+  class ThinkingOnlyChunks
+    def add_message(*) = nil
+
+    def ask(_message, attachments: nil)
+      [" ", "weighing the options"].each do |text|
+        yield Ask::Agent::ChatChunk.new(content: nil, tool_calls: {}, thinking: text,
+                                       input_tokens: nil, output_tokens: nil)
+      end
+
+      Ask::Agent::ResponseMessage.new(content: "done", tool_calls: {}, tool_results: {},
+                                      thinking: nil, input_tokens: 1, output_tokens: 1, cost: 0.0)
+    end
+  end
+end

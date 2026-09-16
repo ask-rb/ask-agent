@@ -23,11 +23,15 @@ module Ask
         event_emitter.emit(Events::TurnStart.new)
 
         response = chat.ask(message, attachments: attachments) do |chunk|
-          if chunk.content.to_s.strip.length > 0
+          # Empty, not blank: providers stream whitespace as its own chunk,
+          # and dropping those glues the words around it together — "the
+          # balance is due 45 days" arrives as "due45 days", "Grade 4" as
+          # "Grade4". A space is content.
+          unless chunk.content.to_s.empty?
             event_emitter.emit(Events::TextDelta.new(content: chunk.content))
           end
 
-          if chunk.respond_to?(:thinking) && chunk.thinking.to_s.strip.length > 0
+          if chunk.respond_to?(:thinking) && !chunk.thinking.to_s.empty?
             event_emitter.emit(Events::ThinkingDelta.new(content: chunk.thinking))
           end
 
