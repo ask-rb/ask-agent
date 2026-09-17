@@ -22,7 +22,7 @@ Gem::Specification.new do |spec|
   spec.bindir = "exe"
   spec.executables = ["askr"]
 
-  spec.add_dependency "ask-core", ">= 0.11.4"
+  spec.add_dependency "ask-core", ">= 0.12.0"
   spec.add_dependency "ask-state-providers", ">= 0.4.6"
   spec.add_dependency "ask-llm-providers", ">= 0.13.7"
   spec.add_dependency "ask-tools", ">= 0.6.2"
