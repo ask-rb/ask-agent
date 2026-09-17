@@ -6,7 +6,8 @@ module Ask
       attr_accessor :default_model, :default_provider, :default_max_turns,
                     :compactor_enabled, :compactor_threshold, :parallel_tool_execution,
                     :max_tool_retries, :prompt_caching, :default_evaluator_model,
-                    :audit_log, :compactor_reserve_tokens, :compactor_keep_recent_tokens
+                    :audit_log, :compactor_reserve_tokens, :compactor_keep_recent_tokens,
+                    :decision_provider
 
       # @return [Middleware::Pipeline] the middleware pipeline for provider calls
       attr_reader :middleware

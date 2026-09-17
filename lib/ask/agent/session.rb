@@ -20,6 +20,8 @@ module Ask
       attr_reader :meta_agent_results
       # @return [Ask::Skills::Registry, nil] auto-discovered skills registry
       attr_reader :skills_registry
+      # @return [Ask::Decisions::AgentAdapter, nil] decision adapter (when decision_provider is set)
+      attr_reader :decision_adapter
 
       def initialize(model:, tools: [], max_turns: 25, max_tool_retries: 3,
                      compactor: nil, hooks: {}, state: nil, persistence: nil,
@@ -148,6 +150,25 @@ module Ask
           @hooks = Hooks.new(
             before_tool: [method(:plan_mode_gate)] + Array(@hooks.instance_variable_get(:@before_tool)),
             after_tool: @hooks.instance_variable_get(:@after_tool)
+          )
+        end
+
+        # Decision provider integration: wire Gate, OutputJudge, and
+        # other decision components when a decision_provider is configured.
+        # This is opt-in — when not set, everything works as before.
+        decision_provider_name = chat_options.delete(:decision_provider) || Ask::Agent.configuration.decision_provider
+        decision_config = chat_options.delete(:decision_config) || {}
+        @decision_adapter = nil
+        if decision_provider_name && defined?(Ask::Decisions)
+          require "ask/decisions/agent_adapter" unless defined?(Ask::Decisions::AgentAdapter)
+          @decision_adapter = Ask::Decisions::AgentAdapter.new(decision_provider_name, decision_config)
+
+          # Wire Gate (before_tool) and OutputJudge (after_tool) into hooks.
+          existing_before = Array(@hooks.instance_variable_get(:@before_tool))
+          existing_after = Array(@hooks.instance_variable_get(:@after_tool))
+          @hooks = Hooks.new(
+            before_tool: @decision_adapter.before_tool_hooks + existing_before,
+            after_tool: existing_after + @decision_adapter.after_tool_hooks
           )
         end
 
