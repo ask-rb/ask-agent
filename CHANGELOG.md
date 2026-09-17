@@ -1,3 +1,19 @@
+## [0.40.17] — 2026-09-18
+
+### Added
+
+- **`decision_provider` — a session can take a decision provider, and its
+  tool calls get judged.** Set it globally
+  (`Ask::Agent.configure { |c| c.decision_provider = :typesafe }`) or per
+  session. `Ask::Decisions::AgentAdapter` then wires a gate in front of every
+  tool call and an output judge behind it; ask-agent itself never requires
+  ask-decisions, and with the setting unset nothing changes at all.
+
+### Changed
+
+- Requires `ask-core >= 0.12.0` for the decision vocabulary.
+
+
 ## [0.40.10] — 2026-09-05
 
 ### Fixed
