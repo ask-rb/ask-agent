@@ -288,4 +288,100 @@ class DefinitionTest < Minitest::Test
       end
     end
   end
+
+  # -- Session.build_from_definition (unified API) --
+
+  def test_build_from_definition_creates_session
+    Dir.chdir(FIXTURES) do
+      Ask::Agent.rediscover!
+      klass, dir = Ask::Agent.definitions["health_check"]
+      session = Ask::Agent::Session.build_from_definition(klass, dir)
+      assert_instance_of Ask::Agent::Session, session
+    end
+  end
+
+  def test_build_from_definition_sets_model
+    Dir.chdir(FIXTURES) do
+      Ask::Agent.rediscover!
+      klass, dir = Ask::Agent.definitions["health_check"]
+      session = Ask::Agent::Session.build_from_definition(klass, dir)
+      assert_equal "gpt-4o", session.chat.model_id
+    end
+  end
+
+  def test_build_from_definition_loads_instructions
+    Dir.chdir(FIXTURES) do
+      Ask::Agent.rediscover!
+      klass, dir = Ask::Agent.definitions["health_check"]
+      session = Ask::Agent::Session.build_from_definition(klass, dir)
+      system_msgs = session.chat.messages.select { |m| m.role == :system }
+      assert system_msgs.any?, "Should have system message from instructions"
+      assert_includes system_msgs.first.content, "Health Check Agent"
+    end
+  end
+
+  def test_build_from_definition_with_model_override
+    Dir.chdir(FIXTURES) do
+      Ask::Agent.rediscover!
+      klass, dir = Ask::Agent.definitions["health_check"]
+      session = Ask::Agent::Session.build_from_definition(klass, dir, model: "claude-sonnet-4")
+      assert_equal "claude-sonnet-4", session.chat.model_id
+    end
+  end
+
+  def test_build_from_definition_with_system_prompt_override
+    Dir.chdir(FIXTURES) do
+      Ask::Agent.rediscover!
+      klass, dir = Ask::Agent.definitions["health_check"]
+      session = Ask::Agent::Session.build_from_definition(klass, dir, system_prompt: "Custom prompt")
+      system_msgs = session.chat.messages.select { |m| m.role == :system }
+      assert system_msgs.any?
+      # The custom prompt should be in the system context, overriding the definition's instructions
+      assert session.chat.messages.any? { |m| m.content.to_s.include?("Custom prompt") }
+    end
+  end
+
+  def test_build_from_definition_sets_agent_dir
+    Dir.chdir(FIXTURES) do
+      Ask::Agent.rediscover!
+      klass, dir = Ask::Agent.definitions["health_check"]
+      session = Ask::Agent::Session.build_from_definition(klass, dir)
+      assert_equal dir, session.instance_variable_get(:@agent_dir)
+    end
+  end
+
+  def test_build_from_definition_matches_agent_new
+    Dir.chdir(FIXTURES) do
+      Ask::Agent.rediscover!
+      from_definition = Ask::Agent::Session.build_from_definition(
+        *Ask::Agent.definitions["health_check"]
+      )
+      from_agent_new = Ask::Agent.new("health_check")
+
+      assert_equal from_definition.chat.model_id, from_agent_new.chat.model_id
+      assert_equal from_definition.tools.size, from_agent_new.tools.size
+    end
+  end
+
+  # -- Ask.chat with name: --
+
+  def test_ask_chat_with_name_creates_session
+    Dir.chdir(FIXTURES) do
+      Ask::Agent.rediscover!
+      # Ask.chat calls Agent.new which calls Session.build_from_definition
+      # We can't run it (no real LLM), but we can verify the path works
+      # by stubbing the session's run
+      session = nil
+      Ask::Agent::Session.any_instance.stubs(:run).returns("ok")
+      Ask.chat("hello", name: "health_check")
+      pass "Ask.chat with name: did not raise"
+    end
+  end
+
+  def test_ask_chat_without_name_uses_direct_session
+    # Verify the no-name path still works (backward compat)
+    Ask::Agent::Session.any_instance.stubs(:run).returns("ok")
+    Ask.chat("hello", model: "gpt-4o")
+    pass "Ask.chat without name: did not raise"
+  end
 end

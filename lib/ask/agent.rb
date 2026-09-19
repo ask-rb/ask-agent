@@ -94,7 +94,7 @@ module Ask
         raise UnknownAgent, "Unknown agent: #{name.inspect}. Searched agents/ and app/agents/." unless entry
 
         klass, dir = entry
-        build_session_from_definition(klass, dir, opts)
+        Session.build_from_definition(klass, dir, opts)
       end
 
       # Force re-discovery of agent definitions.
@@ -188,73 +188,6 @@ module Ask
           @shared_tools[tool_name] = tool_name
         end
       end
-
-      def build_session_from_definition(klass, dir, opts = {})
-        config = klass._config
-        session_opts = { model: config[:model] || Ask::Agent.configuration.default_model }
-
-        # Pass optional config
-        session_opts[:provider] = config[:provider] if config[:provider]
-        session_opts[:max_turns] = config[:max_turns] if config[:max_turns]
-        session_opts[:parallel_tools] = config[:parallel_tools] if config.key?(:parallel_tools)
-        session_opts[:skills_disclosure] = config[:skills_disclosure] if config.key?(:skills_disclosure)
-
-        # Pass arbitrary session options
-        if config[:options]
-          session_opts.merge!(config[:options])
-        end
-
-        # Pass agent directory for per-agent skills discovery
-        session_opts[:agent_dir] = dir
-
-        # Resolve tools
-        tools = resolve_definition_tools(config[:tools], dir)
-        session_opts[:tools] = tools if tools.any?
-
-        # Load instructions
-        prompt = klass.instructions_content
-        session_opts[:system_prompt] = prompt if prompt
-
-        # Apply schedule if defined
-        schedule = config[:schedule]
-        if schedule
-          task_block = ->(sess = nil) {
-            agent = build_session_from_definition(klass, dir)
-            agent.run("")
-          }
-          Ask::Agent.configuration.scheduler.every(schedule, name: File.basename(dir), &task_block)
-        end
-
-        # Caller-supplied runtime options (model/provider/api_key/api_base/...)
-        # win over the definition's config.
-        session_opts.merge!(opts) unless opts.empty?
-
-        Session.new(**session_opts)
-      end
-
-      def resolve_definition_tools(tool_specs, dir)
-        tools = []
-        tool_specs.each do |spec|
-          case spec
-          when Symbol, String
-            name = spec.to_s
-            # Try per-agent tools directory
-            agent_tool_path = File.join(dir, "tools", "#{name}.rb")
-            if File.exist?(agent_tool_path)
-              require agent_tool_path
-            end
-
-            resolved = resolve_tool_symbol(name)
-            if resolved
-              tool_class = resolved.is_a?(Class) ? resolved : Ask::Tools[name]
-              tools << tool_class if tool_class
-            end
-          when Class
-            tools << spec
-          end
-        end
-        tools
-      end
     end
 
     # Register the global config
@@ -336,12 +269,24 @@ end
 #   Ask.chat("Tell me about X", model: "gpt-4o")
 #   Ask.chat("Stream this") { |chunk| puts chunk.content }
 #
+# With a named definition:
+#
+#   Ask.chat("Check health", name: "health_check")
+#   Ask.chat("Check health", name: "health_check", model: "claude-sonnet-4")
+#
 module Ask
-  def self.chat(message, model: nil, system_prompt: nil, &block)
-    session = Agent::Session.new(
-      model: model || Agent.configuration.default_model,
-      system_prompt: system_prompt
-    )
+  def self.chat(message, name: nil, model: nil, system_prompt: nil, &block)
+    session = if name
+      overrides = {}
+      overrides[:model] = model if model
+      overrides[:system_prompt] = system_prompt if system_prompt
+      Agent.new(name, **overrides)
+    else
+      Agent::Session.new(
+        model: model || Agent.configuration.default_model,
+        system_prompt: system_prompt
+      )
+    end
     if block
       session.run(message, &block)
     else

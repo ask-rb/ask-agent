@@ -161,7 +161,7 @@ module Ask
         @provider = config[:provider]
 
         # Resolve tools from definition
-        resolved_tools = Ask::Agent.__send__(:resolve_definition_tools, config[:tools] || [], dir)
+        resolved_tools = Ask::Agent::Session.resolve_definition_tools(config[:tools] || [], dir)
         @tools = resolved_tools.map { |t| t.is_a?(Class) ? t.new : t }
 
         # Load instructions from definition
