@@ -1,11 +1,14 @@
 # frozen_string_literal: true
 
+require "fileutils"
+
 module Ask
   module Agent
     module CLI
       module_function
 
       def run(argv)
+        auto_sync_skills
         case argv.first
         when "run"
           cmd_run(argv[1..])
@@ -162,13 +165,21 @@ module Ask
           cmd_skills_show(args[1])
         when "search"
           cmd_skills_search(args[1])
+        when "install"
+          cmd_skills_install(args[1..])
+        when "uninstall"
+          cmd_skills_uninstall(args[1..])
         else
-          puts "Usage: askr skills <list|show|search>"
+          puts "Usage: askr skills <list|show|search|install|uninstall>"
           puts ""
           puts "Commands:"
           puts "  list                  List all discovered skills"
           puts "  show <name>           Show skill details and sibling files"
           puts "  search <query>        Search skills by name, description, or tags"
+          puts "  install [--global]    Install ask-agent skill to ~/.agents/skills/ (default)"
+          puts "  install --local       Install to .agents/skills/ in current directory"
+          puts "  uninstall [--global]  Remove installed skill"
+          puts "  uninstall --local     Remove locally installed skill"
         end
       end
 
@@ -257,6 +268,112 @@ module Ask
           skill = registry[name]
           puts "  #{skill.name} — #{skill.description}"
         end
+      end
+
+      SKILL_NAME = "agent.build_agents"
+      SKILL_SOURCE_REL = "ask/skills/agent.build_agents/SKILL.md"
+
+      # Keep installed copies in sync after `gem update ask-agent`.
+      # Only touches copies created by `askr skills install` (identified
+      # by the marker file). Failures are swallowed.
+      def auto_sync_skills
+        skill_candidates.each do |dest|
+          next unless File.file?(dest)
+          next unless skill_managed?(dest)
+          skill_sync_copy(dest)
+        end
+      rescue StandardError
+        nil
+      end
+
+      def cmd_skills_install(args)
+        opts = parse_skill_flags(args)
+        dest = skill_target_dir(opts)
+        source = skill_bundled_path
+        unless File.file?(source)
+          puts "Bundled skill not found at #{source} — reinstall ask-agent"
+          exit 1
+        end
+
+        FileUtils.mkdir_p(File.dirname(dest))
+        FileUtils.cp(source, dest)
+        skill_stamp(dest)
+        puts "Installed #{SKILL_NAME} skill -> #{dest}"
+        0
+      end
+
+      def cmd_skills_uninstall(args)
+        opts = parse_skill_flags(args)
+        dest = skill_target_dir(opts)
+        if File.file?(dest)
+          FileUtils.rm(dest)
+          FileUtils.rm_f(skill_managed_marker(dest))
+          puts "Removed #{dest}"
+        else
+          puts "Not installed at #{dest} (nothing to do)"
+        end
+        0
+      end
+
+      def skill_target_dir(opts)
+        if opts[:dir]
+          File.expand_path(File.join(opts[:dir], SKILL_NAME, "SKILL.md"))
+        elsif opts[:local]
+          File.join(Dir.pwd, ".agents", "skills", SKILL_NAME, "SKILL.md")
+        else
+          File.expand_path("~/.agents/skills/#{SKILL_NAME}/SKILL.md")
+        end
+      end
+
+      def skill_bundled_path
+        File.expand_path("../../#{SKILL_SOURCE_REL}", __dir__)
+      end
+
+      def skill_managed_marker(dest)
+        File.join(File.dirname(dest), ".ask-agent-managed")
+      end
+
+      def skill_managed?(dest)
+        File.file?(skill_managed_marker(dest))
+      end
+
+      def skill_stamp(dest)
+        File.write(skill_managed_marker(dest), "managed by askr skills install; safe to auto-update\n")
+      rescue StandardError
+        nil
+      end
+
+      def skill_candidates
+        [
+          File.expand_path("~/.agents/skills/#{SKILL_NAME}/SKILL.md"),
+          File.join(Dir.pwd, ".agents", "skills", SKILL_NAME, "SKILL.md")
+        ]
+      end
+
+      def skill_sync_copy(dest)
+        source = skill_bundled_path
+        FileUtils.cp(source, dest) if File.exist?(source) && File.read(source) != File.read(dest)
+        skill_stamp(dest)
+      rescue StandardError
+        nil
+      end
+
+      def parse_skill_flags(args)
+        opts = {}
+        args.each do |arg|
+          case arg
+          when "--local" then opts[:local] = true
+          when "--global" then nil # default
+          when "--dir"
+            # next arg is the path; handled by shifting in the caller
+          when /\A--dir=(.+)/ then opts[:dir] = $1
+          when "--help", "-h"
+            puts "Usage: askr skills install [--global] [--local] [--dir <path>]"
+            puts "       askr skills uninstall [--global] [--local] [--dir <path>]"
+            exit 0
+          end
+        end
+        opts
       end
 
       def cmd_help

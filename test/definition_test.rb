@@ -384,4 +384,122 @@ class DefinitionTest < Minitest::Test
     Ask.chat("hello", model: "gpt-4o")
     pass "Ask.chat without name: did not raise"
   end
+
+  # -- Skills install/uninstall --
+
+  def test_skills_install_global
+    Dir.mktmpdir do |tmp|
+      home_dir = File.join(tmp, "home")
+      ENV["HOME"] = home_dir
+
+      Ask::Agent::CLI.cmd_skills_install(["--global"])
+
+      dest = File.join(home_dir, ".agents", "skills", "agent.build_agents", "SKILL.md")
+      assert File.file?(dest), "Skill should be installed at #{dest}"
+
+      marker = File.join(File.dirname(dest), ".ask-agent-managed")
+      assert File.file?(marker), "Managed marker should exist"
+
+      content = File.read(dest)
+      assert_includes content, "name: agent.build_agents"
+    ensure
+      ENV["HOME"] = ENV["HOME"] # restore
+    end
+  end
+
+  def test_skills_install_local
+    Dir.mktmpdir do |tmp|
+      Dir.chdir(tmp) do
+        Ask::Agent::CLI.cmd_skills_install(["--local"])
+
+        dest = File.join(tmp, ".agents", "skills", "agent.build_agents", "SKILL.md")
+        assert File.file?(dest), "Skill should be installed locally at #{dest}"
+      end
+    end
+  end
+
+  def test_skills_uninstall_global
+    Dir.mktmpdir do |tmp|
+      home_dir = File.join(tmp, "home")
+      ENV["HOME"] = home_dir
+
+      # Install first
+      Ask::Agent::CLI.cmd_skills_install(["--global"])
+      dest = File.join(home_dir, ".agents", "skills", "agent.build_agents", "SKILL.md")
+      assert File.file?(dest)
+
+      # Uninstall
+      Ask::Agent::CLI.cmd_skills_uninstall(["--global"])
+      refute File.file?(dest), "Skill should be removed after uninstall"
+
+      marker = File.join(File.dirname(dest), ".ask-agent-managed")
+      refute File.file?(marker), "Marker should be removed"
+    ensure
+      ENV["HOME"] = ENV["HOME"]
+    end
+  end
+
+  def test_skills_uninstall_not_installed
+    Dir.mktmpdir do |tmp|
+      home_dir = File.join(tmp, "home")
+      ENV["HOME"] = home_dir
+
+      output = capture_io {
+        Ask::Agent::CLI.cmd_skills_uninstall(["--global"])
+      }.first
+      assert_includes output, "nothing to do"
+    ensure
+      ENV["HOME"] = ENV["HOME"]
+    end
+  end
+
+  def test_skills_install_bundled_path_exists
+    # The CLI resolves the path relative to cli.rb's directory
+    cli_dir = File.expand_path("../lib/ask/agent", __dir__)
+    bundled = File.expand_path("../../ask/skills/agent.build_agents/SKILL.md", cli_dir)
+    assert File.file?(bundled), "Bundled skill should exist at #{bundled}"
+  end
+
+  def test_skills_auto_sync_updates_managed_copies
+    Dir.mktmpdir do |tmp|
+      home_dir = File.join(tmp, "home")
+      ENV["HOME"] = home_dir
+
+      # Install
+      Ask::Agent::CLI.cmd_skills_install(["--global"])
+      dest = File.join(home_dir, ".agents", "skills", "agent.build_agents", "SKILL.md")
+      original = File.read(dest)
+
+      # Corrupt the installed copy
+      File.write(dest, "corrupted content")
+
+      # Auto-sync should restore it
+      Ask::Agent::CLI.auto_sync_skills
+      restored = File.read(dest)
+      refute_equal "corrupted content", restored, "Auto-sync should overwrite corrupted copy"
+    ensure
+      ENV["HOME"] = ENV["HOME"]
+    end
+  end
+
+  def test_skills_auto_sync_skips_unmanaged_copies
+    Dir.mktmpdir do |tmp|
+      home_dir = File.join(tmp, "home")
+      ENV["HOME"] = home_dir
+
+      dest_dir = File.join(home_dir, ".agents", "skills", "agent.build_agents")
+      FileUtils.mkdir_p(dest_dir)
+      dest = File.join(dest_dir, "SKILL.md")
+
+      # Write a hand-edited copy without the managed marker
+      File.write(dest, "hand-edited content")
+
+      # Auto-sync should NOT overwrite
+      Ask::Agent::CLI.auto_sync_skills
+      assert_equal "hand-edited content", File.read(dest),
+        "Auto-sync should not overwrite unmanaged copies"
+    ensure
+      ENV["HOME"] = ENV["HOME"]
+    end
+  end
 end
