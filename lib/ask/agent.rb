@@ -8,6 +8,7 @@ require "ask/skills"
 require "ask-llm-providers"
 require "ask-tools"
 require "ask-state-providers"
+require "ask-runtime"
 
 module Ask
   module Agent
@@ -257,6 +258,20 @@ module Ask
       # @return [String, nil] the tool call id being executed on this thread
       def current_tool_call_id
         Thread.current[:ask_agent_tool_call_id]
+      end
+
+      # @return [Ask::Runtime::ToolCall, nil] the runtime tool call for the
+      #   currently executing tool on this thread. Available only during tool
+      #   execution inside ToolExecutor.
+      def current_runtime_call
+        Thread.current[:ask_agent_runtime_call]
+      end
+
+      # @return [Ask::Runtime::ExecutionContext, nil] the runtime execution
+      #   context for the currently executing tool on this thread. Available
+      #   only during tool execution inside ToolExecutor.
+      def current_runtime_context
+        Thread.current[:ask_agent_runtime_context]
       end
     end
   end

@@ -878,10 +878,10 @@ end
       private
 
       def build_audit_log(config)
-          config ||= Ask::Agent.configuration.audit_log
-          return nil unless config
-          Ask::Agent::Policies::AuditLog.new(self, adapter: config)
-        end
+        config ||= Ask::Agent.configuration.audit_log
+        return nil unless config
+        Ask::Agent::Policies::AuditLog.new(self, adapter: config)
+      end
 
       # Build the approval queue + policy when approval is enabled.
       #

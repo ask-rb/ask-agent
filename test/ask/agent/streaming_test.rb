@@ -32,7 +32,7 @@ class StreamingTest < Minitest::Test
 
     assert lines.any?
     lines.each do |line|
-      assert_match /\Adata: .+\n\n\z/, line, "Each line should be an SSE event"
+      assert_match(/\Adata: .+\n\n\z/, line, "Each line should be an SSE event")
     end
   end
 
@@ -41,7 +41,7 @@ class StreamingTest < Minitest::Test
     stream = Ask::Agent::Streaming.run(@session, "hello")
     first = stream.next
 
-    assert_match /"type":"start"/, first
+    assert_match(/"type":"start"/, first)
   end
 
   def test_streaming_enumerator_ends_with_close_event
@@ -50,7 +50,7 @@ class StreamingTest < Minitest::Test
     lines = stream.to_a
     last = lines.last
 
-    assert_match /"type":"close"/, last
+    assert_match(/"type":"close"/, last)
   end
 
   def test_streaming_enumerator_includes_done_event

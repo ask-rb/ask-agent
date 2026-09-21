@@ -17,10 +17,10 @@ class SchedulerTest < Minitest::Test
   end
 
   def test_scheduler_config_dsl_every
-    task = nil
+    _task = nil
     Ask::Agent.configure do |c|
       c.scheduler.every "5 minutes", name: "test-task" do
-        task = :ran
+        _task = :ran
       end
     end
 

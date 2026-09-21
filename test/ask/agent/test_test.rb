@@ -28,7 +28,7 @@ class AgentTestFrameworkTest < Minitest::Test
 
     @session.run("Run echo")
     assert_called_tool "echo"
-    assert_final_response /Done/
+    assert_final_response(/Done/)
     assert_no_unused_stubs
   end
 
@@ -39,7 +39,7 @@ class AgentTestFrameworkTest < Minitest::Test
 
     @session.run("Do both")
     assert_tool_order %w[echo echo]
-    assert_final_response /All done/
+    assert_final_response(/All done/)
     assert_no_unused_stubs
   end
 
@@ -69,7 +69,7 @@ class AgentTestFrameworkTest < Minitest::Test
     @session.stub_text("done")
     @session.run("test")
     assert_called_tool "echo"
-    assert_final_response /done/
+    assert_final_response(/done/)
   end
 
   def test_test_mode_methods_available_but_inactive

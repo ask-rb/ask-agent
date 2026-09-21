@@ -31,7 +31,7 @@ module Ask
 
         def test_audit_log_subscribes_to_session_events
           store = TestAdapter.new
-          log = AuditLog.new(@session, adapter: store)
+          _log = AuditLog.new(@session, adapter: store)
 
           @session.emit(Events::SessionStart.new)
           @session.emit(Events::SessionEnd.new(
@@ -46,7 +46,7 @@ module Ask
 
         def test_audit_log_records_tool_execution
           store = TestAdapter.new
-          log = AuditLog.new(@session, adapter: store)
+          _log = AuditLog.new(@session, adapter: store)
 
           @session.emit(Events::ToolExecutionStart.new(
             name: "test_tool", arguments: { foo: "bar" }, id: "call_1"
@@ -64,7 +64,7 @@ module Ask
 
         def test_audit_log_records_errors
           store = TestAdapter.new
-          log = AuditLog.new(@session, adapter: store)
+          _log = AuditLog.new(@session, adapter: store)
 
           @session.emit(Events::Error.new(error: "API timeout", recoverable: true))
 
@@ -75,7 +75,7 @@ module Ask
 
         def test_filters_out_non_stored_events
           store = TestAdapter.new
-          log = AuditLog.new(@session, adapter: store)
+          _log = AuditLog.new(@session, adapter: store)
 
           @session.emit(Events::TextDelta.new(content: "hello"))
           @session.emit(Events::TurnStart.new)
@@ -179,7 +179,7 @@ module Ask
 
         def test_redacts_sensitive_args
           store = TestAdapter.new
-          log = AuditLog.new(@session, adapter: store)
+          _log = AuditLog.new(@session, adapter: store)
 
           @session.emit(Events::ToolExecutionStart.new(
             name: "run_sql", arguments: { sql: "SELECT * FROM users", query: "safe" }, id: "call_2"

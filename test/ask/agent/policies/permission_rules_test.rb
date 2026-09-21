@@ -27,7 +27,7 @@ module Ask
         end
 
         def test_regexp_tool_pattern_matches_name
-          r = rules { allow /^git_/ }
+          r = rules { allow(/^git_/) }
           assert_equal :allow, r.classify("git_pull")
           assert_equal :allow, r.classify("git_push")
           assert_nil r.classify("github")

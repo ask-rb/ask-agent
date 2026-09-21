@@ -103,7 +103,7 @@ module Ask
           # when the background work completes.
           user_results = tool_executor.execute(
             user_tool_calls, tools, hooks: hooks, event_emitter: event_emitter,
-            session_id: session_id,
+            session_id: session_id, turn: @turn_count,
             result_callback: lambda do |tool_call_id, result|
               tc = user_tool_calls[tool_call_id]
               next unless tc

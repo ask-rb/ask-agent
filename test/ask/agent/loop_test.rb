@@ -2,7 +2,7 @@
 
 require_relative "../../test_helper"
 
-class LoopTest < Minitest::Test
+class AgentLoopTest < Minitest::Test
   def setup
     @loop = Ask::Agent::Loop.new(max_turns: 5)
   end

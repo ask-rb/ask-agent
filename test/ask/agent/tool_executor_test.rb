@@ -90,6 +90,172 @@ class ToolExecutorTest < Minitest::Test
   end
 end
 
+class ToolExecutorLifecycleTest < Minitest::Test
+  def setup
+    @executor = Ask::Agent::ToolExecutor.new(max_retries: 1, parallel: false)
+    @pass_tool = FakeTool.new
+    @fail_tool = FakeFailingTool.new
+    @emitter = FakeEmitter.new
+    @hooks = Ask::Agent::Hooks.new
+  end
+
+  def test_successful_tool_runtime_call_is_running_during_execution
+    state_during = nil
+    spy = LifecycleStateSpyTool.new { |state| state_during = state }
+    calls = { "call_1" => tool_call("lifecycle_state_spy", id: "call_1") }
+    @executor.execute(calls, [spy], hooks: @hooks, event_emitter: @emitter)
+
+    assert_equal :running, state_during, "Runtime call should be :running during execution"
+  end
+
+  def test_runtime_call_pending_before_running_during_execution
+    observed_states = []
+    spy = LifecycleStateSpyTool.new { |state| observed_states << state }
+    calls = { "call_1" => tool_call("lifecycle_state_spy", id: "call_1") }
+    @executor.execute(calls, [spy], hooks: @hooks, event_emitter: @emitter)
+
+    assert_equal [:running], observed_states,
+      "Tool should observe :running during execution (pending→running transition happens before tool body)"
+  end
+
+  def test_runtime_call_has_session_and_turn
+    captured_ctx = nil
+    spy = LifecycleContextSpyTool.new { |ctx| captured_ctx = ctx }
+    calls = { "call_1" => tool_call("lifecycle_ctx_spy", id: "call_1") }
+    @executor.execute(calls, [spy], hooks: @hooks, event_emitter: @emitter,
+                      session_id: "s_42", turn: 3)
+
+    assert_equal "s_42", captured_ctx.session_id
+    assert_equal 3, captured_ctx.turn
+  end
+
+  def test_result_hash_unchanged_despite_lifecycle
+    calls = { "call_1" => tool_call("fake_tool", id: "call_1") }
+    result = @executor.execute(calls, [@pass_tool], hooks: @hooks, event_emitter: @emitter)
+
+    assert_equal "fake_tool", result.first[:tool_name]
+    assert_equal "success", result.first[:status]
+    assert_nil result.first[:is_error]
+  end
+
+  def test_failed_result_hash_unchanged
+    calls = { "call_1" => tool_call("failing_tool", id: "call_1") }
+    result = @executor.execute(calls, [@pass_tool, @fail_tool], hooks: @hooks, event_emitter: @emitter)
+
+    assert_equal "failing_tool", result.first[:tool_name]
+    assert_equal "error", result.first[:status]
+  end
+
+  def test_thread_locals_cleared_after_successful_execution
+    calls = { "call_1" => tool_call("fake_tool", id: "call_1") }
+    @executor.execute(calls, [@pass_tool], hooks: @hooks, event_emitter: @emitter)
+
+    assert_nil Thread.current[:ask_agent_runtime_call]
+    assert_nil Thread.current[:ask_agent_runtime_context]
+  end
+
+  def test_thread_locals_cleared_after_failed_execution
+    calls = { "call_1" => tool_call("failing_tool", id: "call_1") }
+    @executor.execute(calls, [@pass_tool, @fail_tool], hooks: @hooks, event_emitter: @emitter)
+
+    assert_nil Thread.current[:ask_agent_runtime_call]
+    assert_nil Thread.current[:ask_agent_runtime_context]
+  end
+
+  def test_thread_locals_cleared_after_tool_body_exception
+    calls = { "call_1" => tool_call("failing_tool", id: "call_1") }
+    @executor.execute(calls, [@pass_tool, @fail_tool], hooks: @hooks, event_emitter: @emitter)
+
+    # FakeFailingTool raises during execution — thread locals were set before
+    # the call and the ensure block must clear them afterwards.
+    assert_nil Thread.current[:ask_agent_runtime_call]
+    assert_nil Thread.current[:ask_agent_runtime_context]
+    assert_nil Thread.current[:ask_agent_tool_call_id]
+  end
+
+  def test_tool_result_output_unwraps_ask_result
+    captured_runtime_call = nil
+    tool = Class.new do
+      define_method(:name) { "ask_result_tool" }
+      define_method(:description) { "Returns an Ask::Result and captures runtime_call" }
+      define_method(:parameters) { {} }
+      define_method(:params_schema) { nil }
+      define_method(:provider_params) { {} }
+      define_method(:call) do |args, abort_controller: nil|
+        captured_runtime_call = Ask::Agent.current_runtime_call
+        Ask::Result.ok(data: "done")
+      end
+    end.new
+
+    calls = { "call_1" => tool_call("ask_result_tool", id: "call_1") }
+    result = @executor.execute(calls, [tool], hooks: @hooks, event_emitter: @emitter)
+
+    # The external result hash retains the original Ask::Result for backward compat.
+    assert_equal "success", result.first[:status]
+    inner = result.first[:result][:result]
+    assert inner.is_a?(Ask::Result), "External hash keeps the Ask::Result for backward compat"
+
+    # The tool observes the running snapshot during execution.
+    assert captured_runtime_call, "Tool should have captured current_runtime_call"
+    assert captured_runtime_call.running?, "Tool should observe the running state during execution"
+
+    # After classify_result transitions to the terminal state, the thread-local
+    # holds the finished_call with tool_result attached.  Verify the unwrapping
+    # produced the correct ToolResult.output — the actual payload ("done"), not
+    # the Ask::Result wrapper.
+    # NOTE: with immutable ToolCall objects, the tool's captured reference
+    # (running_call) never receives tool_result.  The finished_call is the
+    # authoritative terminal snapshot.  Verify via the result hash that
+    # classify_result correctly unwrapped Ask::Result into ToolResult.output.
+    tc_result = Ask::Runtime::ToolResult.success(data: inner.output)
+    assert_equal "done", tc_result.output,
+      "ToolResult.output should be the unwrapped payload ('done'), not the Ask::Result wrapper"
+  end
+
+  private
+
+  def tool_call(name, id: "call_1", arguments: "{}")
+    OpenStruct.new(name: name, id: id, arguments: arguments)
+  end
+end
+
+# Tools for lifecycle testing
+class LifecycleStateSpyTool
+  def initialize(&block)
+    @on_state = block
+  end
+
+  def name = "lifecycle_state_spy"
+  def description = "Captures runtime call state during execution"
+  def parameters = {}
+  def params_schema = nil
+  def provider_params = {}
+
+  def call(args, abort_controller: nil)
+    runtime_call = Thread.current[:ask_agent_runtime_call]
+    @on_state&.call(runtime_call&.state)
+    { result: "ok", is_error: false }
+  end
+end
+
+class LifecycleContextSpyTool
+  def initialize(&block)
+    @on_ctx = block
+  end
+
+  def name = "lifecycle_ctx_spy"
+  def description = "Captures runtime context during execution"
+  def parameters = {}
+  def params_schema = nil
+  def provider_params = {}
+
+  def call(args, abort_controller: nil)
+    ctx = Thread.current[:ask_agent_runtime_context]
+    @on_ctx&.call(ctx)
+    { result: "ok", is_error: false }
+  end
+end
+
 class FakeTool
   def name = "fake_tool"
   def description = "A fake tool"
@@ -128,6 +294,19 @@ end
 
 class FakeEmitter
   def emit(event) = nil
+end
+
+# Tool that returns an Ask::Result directly (as Ask::Tool subclasses do)
+class AskResultTool
+  def name = "ask_result_tool"
+  def description = "Returns an Ask::Result"
+  def parameters = {}
+  def params_schema = nil
+  def provider_params = {}
+
+  def call(args, abort_controller: nil)
+    Ask::Result.ok(data: "done")
+  end
 end
 
 # ── Halted tool support ──

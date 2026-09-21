@@ -90,7 +90,7 @@ class TelemetryTest < Minitest::Test
   end
 
   def test_read_recommendations_by_status
-    rec_id = @telemetry.track_recommendation(issue: "Issue", file: "a.rb", line: 1, confidence: "high", suggestion: "Fix")
+    _rec_id = @telemetry.track_recommendation(issue: "Issue", file: "a.rb", line: 1, confidence: "high", suggestion: "Fix")
     open_recs = @telemetry.read_recommendations(status: "open")
     assert_equal 1, open_recs.size
     resolved_recs = @telemetry.read_recommendations(status: "resolved")

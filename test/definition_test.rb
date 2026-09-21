@@ -371,7 +371,7 @@ class DefinitionTest < Minitest::Test
       # Ask.chat calls Agent.new which calls Session.build_from_definition
       # We can't run it (no real LLM), but we can verify the path works
       # by stubbing the session's run
-      session = nil
+      _session = nil
       Ask::Agent::Session.any_instance.stubs(:run).returns("ok")
       Ask.chat("hello", name: "health_check")
       pass "Ask.chat with name: did not raise"
@@ -468,7 +468,7 @@ class DefinitionTest < Minitest::Test
       # Install
       Ask::Agent::CLI.cmd_skills_install(["--global"])
       dest = File.join(home_dir, ".agents", "skills", "agent.build_agents", "SKILL.md")
-      original = File.read(dest)
+      _original = File.read(dest)
 
       # Corrupt the installed copy
       File.write(dest, "corrupted content")

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 if ENV["COVERAGE"]
   require "simplecov"
   SimpleCov.start do
@@ -6,8 +8,6 @@ if ENV["COVERAGE"]
     track_files "lib/**/*.rb"
   end
 end
-
-# frozen_string_literal: true
 
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 $LOAD_PATH.unshift File.expand_path("../../ask-core/lib", __dir__)
@@ -19,6 +19,7 @@ $LOAD_PATH.unshift File.expand_path("../../ask-schema/lib", __dir__)
 $LOAD_PATH.unshift File.expand_path("../../ask-skills/lib", __dir__)
 $LOAD_PATH.unshift File.expand_path("../../ask-llm-providers/lib", __dir__)
 $LOAD_PATH.unshift File.expand_path("../../ask-state-providers/lib", __dir__)
+$LOAD_PATH.unshift File.expand_path("../../ask-runtime/lib", __dir__)
 
 require "ask/errors"
 require "ask/version"

@@ -64,7 +64,6 @@ module Ask
         @messages << Ask::Message.new(role: :user, content: merge_attachments(message, attachments)) if has_message || attachments
 
         stream = block_given?
-        tool_defs = @tools.map { |t| Ask::ToolDef.from_tool(t) }
 
         calls_acc = {}
         response_msg = chat_with_retry(stream, calls_acc, &block)

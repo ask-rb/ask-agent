@@ -4,6 +4,7 @@ gemspec
 
 gem "ostruct"
 gem "ask-core"
+gem "ask-runtime", path: "../ask-runtime"
 gem "ask-llm-providers"
 gem "ask-tools"
 gem "ask-tools-shell"

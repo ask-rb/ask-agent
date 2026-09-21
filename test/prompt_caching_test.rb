@@ -140,7 +140,7 @@ class PromptCachingTest < Minitest::Test
   end
 
   def test_chat_passes_prompt_caching_to_provider
-    provider = Ask::Providers::OpenAI.new(api_key: "test-key")
+    _provider = Ask::Providers::OpenAI.new(api_key: "test-key")
 
     # Use a test chat with caching enabled
     chat = Ask::Agent::Chat.new(model: "gpt-4o", prompt_caching: true)
