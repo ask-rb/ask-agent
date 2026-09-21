@@ -251,17 +251,73 @@ module Ask
       # @return [Ask::Runtime::ToolResult] the normalized result
       def _runtime_execute(tool_call, context: nil)
         context ||= Ask::Runtime::ExecutionContext.new
+        started_at = Time.now
+        started_call = tool_call.with(state: :running, started_at: started_at)
+        emit_runtime_event(context.event_sink, :tool_started,
+          Ask::Runtime::Events::ToolStarted.new(
+            tool_call: started_call, execution_context: context, timestamp: started_at
+          ))
+
+        return runtime_cancel(started_call, context, started_at, "Cancelled before execution") if context.cancelled?
+
         tool = find_tool_for_runtime(tool_call.tool_name)
 
-        unless tool
-          return Ask::Runtime::ToolResult.failure("Tool not found: #{tool_call.tool_name}")
+        result = if tool
+          invoke_tool_with_retry(tool, tool_call.id, tool_call.input, context.canceller)
+        else
+          Ask::Runtime::ToolResult.failure("Tool not found: #{tool_call.tool_name}")
         end
 
-        if context.cancelled?
-          return Ask::Runtime::ToolResult.cancelled("Cancelled before execution")
-        end
+        return runtime_cancel(started_call, context, started_at, "Cancelled during execution") if context.cancelled?
 
-        invoke_tool_with_retry(tool, tool_call.id, tool_call.input, context.canceller)
+        runtime_finish(started_call, context, result, started_at)
+      end
+
+      def runtime_finish(started_call, context, result, started_at)
+        finished_at = Time.now
+        duration = finished_at - started_at
+        result = Ask::Runtime::ToolResult.new(
+          result: result.result, outcome: result.outcome, duration: duration
+        )
+        state = if result.timeout?
+          :timed_out
+        elsif result.failure?
+          :failed
+        else
+          :completed
+        end
+        finished_call = started_call.with(
+          state: state,
+          tool_result: result,
+          error: result.error_message,
+          finished_at: finished_at
+        )
+        emit_runtime_terminal_event(
+          context.event_sink, state,
+          tool_call: finished_call, tool_result: result,
+          execution_context: context, timestamp: finished_at, duration: duration
+        )
+        result
+      end
+
+      def runtime_cancel(started_call, context, started_at, reason)
+        finished_at = Time.now
+        duration = finished_at - started_at
+        result = Ask::Runtime::ToolResult.new(
+          result: Ask::Result.failure(reason), outcome: :cancelled, duration: duration
+        )
+        finished_call = started_call.with(
+          state: :cancelled,
+          tool_result: result,
+          error: result.error_message,
+          finished_at: finished_at
+        )
+        emit_runtime_terminal_event(
+          context.event_sink, :cancelled,
+          tool_call: finished_call, tool_result: result,
+          execution_context: context, timestamp: finished_at, duration: duration
+        )
+        result
       end
 
       # Find a tool by name for the runtime contract path.
