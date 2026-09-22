@@ -23,11 +23,11 @@ Gem::Specification.new do |spec|
   spec.executables = ["askr"]
 
   spec.add_dependency "ask-core", ">= 0.12.1"
-  spec.add_dependency "ask-runtime", ">= 0.1.0"
+  spec.add_dependency "ask-runtime", ">= 0.1.1"
   spec.add_dependency "ask-state-providers", ">= 0.4.6"
   spec.add_dependency "ask-llm-providers", ">= 0.13.7"
   spec.add_dependency "ask-tools", ">= 0.6.2"
-  spec.add_dependency "ask-skills", ">= 0.1"
+  spec.add_dependency "ask-skills", ">= 0.5.4"
   spec.add_dependency "ask-instrumentation", ">= 0.1"
   spec.add_dependency "rufus-scheduler", "~> 3.9"
   spec.add_dependency "ask-session", ">= 0.1.1"
