@@ -1,5 +1,8 @@
 ## [Unreleased]
 
+
+## [0.40.21] — 2026-09-22
+
 ### Added
 
 - **`Ask::Agent::SessionAdapter` — bridges an agent session to
@@ -22,6 +25,41 @@
   `metadata.turn_count`, and `SessionAdapter` snapshots all recorded `0` for
   live runs. Turns are now counted on `TurnStart`, matching the loop's own
   count (`reset: true` scopes it to the run; `reset: false` accumulates).
+
+
+## [0.40.20] — 2026-09-21
+
+### Changed
+
+- **Agent tool execution unified with ask-runtime.** `ToolExecutor` runs
+  tool calls through the runtime's execution contract, exposing the current
+  runtime call and execution context (`Ask.current_runtime_call` /
+  `Ask.current_runtime_context`) while a tool executes, and conforming to
+  the runtime executor contract.
+- Requires `ask-runtime >= 0.1.0`.
+
+
+## [0.40.19] — 2026-09-20
+
+### Added
+
+- **Bundled `agent.build_agents` skill** — teaches building agents with
+  ask-rb (definitions, sessions, tools, configuration, common patterns).
+  Auto-discovered via `Gem.find_files` when ask-skills is present.
+- **`askr skills install` / `askr skills uninstall`** with
+  `--global|--local|--dir`, plus auto-sync of managed skill copies on
+  every CLI invocation.
+
+
+## [0.40.18] — 2026-09-19
+
+### Changed
+
+- **`Agent.new` and `Session.new` unified.** The shared implementation
+  lives in `Session.build_from_definition`; `Agent.new` delegates to it,
+  `Session.new` supports definition lookup, and `Ask.chat` accepts `name:`
+  for definition lookup. The duplicate `build_session_from_definition` and
+  `resolve_definition_tools` helpers were removed from the `Agent` module.
 
 
 ## [0.40.17] — 2026-09-18
