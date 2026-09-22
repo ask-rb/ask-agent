@@ -1,3 +1,16 @@
+## [Unreleased]
+
+### Added
+
+- **`Ask::Agent::SessionAdapter` — bridges an agent session to
+  `Ask::Session::Host`.** Records user input and per-run snapshots as
+  event-sourced ask-session events, maps agent events (turn, streaming,
+  tool, todo, plan, error) onto session event types with `trace_id` /
+  `causation_id` propagation, and resumes from the latest snapshot
+  (`SessionAdapter.resume`). Requires the new runtime dependency
+  `ask-session >= 0.1.0` (the single session store; no second store added).
+
+
 ## [0.40.17] — 2026-09-18
 
 ### Added
