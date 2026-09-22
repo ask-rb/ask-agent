@@ -13,7 +13,7 @@ class LoopToolExecutorDispatchTest < Minitest::Test
       @dispatched_to = []
     end
 
-    def execute(tool_calls, tools, hooks:, event_emitter:, session_id: nil, turn: nil, result_callback: nil)
+    def execute(tool_calls, tools, hooks:, event_emitter:, session_id: nil, turn: nil, result_callback: nil, runtime_event_sink: nil)
       @dispatched_to << (tool_calls.empty? ? :execute_empty : :execute)
       return [] unless @parallel
 

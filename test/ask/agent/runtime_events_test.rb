@@ -202,6 +202,127 @@ class RuntimeEventEmissionTest < Minitest::Test
   end
 end
 
+# ---------------------------------------------------------------------------
+# Regression: Session#run → Loop#run_turn → ToolExecutor#execute_batch must
+# forward an explicitly supplied runtime_event_sink. A normal Session#run
+# tool invocation emits the runtime lifecycle (tool_started → tool_completed)
+# through that sink; nil stays backward compatible.
+# ---------------------------------------------------------------------------
+
+class SessionRunRuntimeSinkRegressionTest < Minitest::Test
+  # Recording sink duck-typing Ask::Runtime::EventSink#emit.
+  class RecordingSink
+    attr_reader :events
+
+    def initialize
+      @events = []
+    end
+
+    def emit(event_type, **payload)
+      @events << [event_type, payload[:event]]
+      self
+    end
+  end
+
+  # Chat that issues a tool call on the first two turns — covering both the
+  # initial Loop#run_turn and its recursive tool turn — then answers with
+  # text.
+  class ScriptedToolChat
+    attr_reader :messages, :model
+
+    def initialize(tool_name:)
+      @tool_name = tool_name
+      @ask_count = 0
+      @messages = []
+      @model = OpenStruct.new(id: "gpt-4o")
+    end
+
+    def model_id = "gpt-4o"
+    def with_instructions(*) = self
+
+    def ask(message = nil, attachments: nil)
+      @ask_count += 1
+      if @ask_count <= 2
+        tool_calls = {
+          "call_#{@ask_count}" => Ask::Agent::ToolCallInfo.new(
+            id: "call_#{@ask_count}", name: @tool_name, arguments: "{}"
+          )
+        }
+        Ask::Agent::ResponseMessage.new(
+          content: "", tool_calls: tool_calls, tool_results: {},
+          thinking: nil, input_tokens: nil, output_tokens: nil, cost: nil
+        )
+      else
+        Ask::Agent::ResponseMessage.new(
+          content: "all done", tool_calls: {}, tool_results: {},
+          thinking: nil, input_tokens: nil, output_tokens: nil, cost: nil
+        )
+      end
+    end
+
+    def add_message(role:, content: nil, tool_call_id: nil, tool_calls: nil, attachments: nil)
+      @messages << Ask::Message.new(
+        role: role, content: content, tool_call_id: tool_call_id, tool_calls: tool_calls
+      )
+    end
+
+    def reset_messages! = @messages.clear
+  end
+
+  class SinkEchoTool
+    def name = "sink_echo"
+    def description = "Echoes for the sink regression"
+    def parameters = {}
+    def params_schema = nil
+    def provider_params = {}
+    def call(args, abort_controller: nil) = "echoed"
+  end
+
+  def test_session_run_tool_invocation_emits_runtime_lifecycle_to_supplied_sink
+    sink = RecordingSink.new
+    session = Ask::Agent::Session.new(
+      model: ScriptedToolChat.new(tool_name: "sink_echo"),
+      tools: [SinkEchoTool.new],
+      skills_disclosure: false
+    )
+
+    response = session.run("use the tool", runtime_event_sink: sink)
+
+    assert_equal "all done", response
+
+    started = sink.events.select { |type, _| type == :tool_started }
+    completed = sink.events.select { |type, _| type == :tool_completed }
+
+    assert_equal 2, started.length,
+      "one ToolStarted per tool turn (initial run_turn + recursive tool turn)"
+    assert_equal 2, completed.length,
+      "one ToolCompleted per tool turn (initial run_turn + recursive tool turn)"
+
+    first_started = started.first[1]
+    assert_instance_of Ask::Runtime::Events::ToolStarted, first_started
+    assert_equal "sink_echo", first_started.tool_name
+    assert_equal "call_1", first_started.tool_call_id
+    assert_equal session.id, first_started.execution_context.session_id
+
+    first_completed = completed.first[1]
+    assert_instance_of Ask::Runtime::Events::ToolCompleted, first_completed
+    assert first_completed.tool_result.success?
+    assert_equal "sink_echo", first_completed.tool_name
+  end
+
+  def test_session_run_without_sink_stays_backward_compatible
+    session = Ask::Agent::Session.new(
+      model: ScriptedToolChat.new(tool_name: "sink_echo"),
+      tools: [SinkEchoTool.new],
+      skills_disclosure: false
+    )
+
+    response = session.run("use the tool")
+
+    assert_equal "all done", response
+  end
+end
+
 class RuntimeEventFailureClassificationTest < Minitest::Test
   def setup
     @executor = Ask::Agent::ToolExecutor.new(max_retries: 1, parallel: false)
