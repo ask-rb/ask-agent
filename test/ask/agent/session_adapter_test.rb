@@ -2,6 +2,21 @@
 
 require_relative "../../test_helper"
 require "ask/session"
+require "tmpdir"
+
+PROVIDER_AVAILABLE =
+  begin
+    require "ask-state-providers"
+    true
+  rescue LoadError
+    begin
+      require "ask/state"
+      require "ask/state/providers/sqlite"
+      true
+    rescue LoadError
+      false
+    end
+  end
 
 class SessionAdapterTest < Minitest::Test
   Events = Ask::Agent::Events
@@ -251,6 +266,61 @@ class SessionAdapterTest < Minitest::Test
     assert_equal original.turn_count, restored_agent.turn_count
     assert_equal restored_agent.chat.messages.size, restored_agent.messages.size
     refute_empty restored_agent.messages
+  end
+
+  # --- restart resume over durable ProviderStore/SQLite ---
+
+  def test_restart_resume_restores_messages_and_turn_count
+    skip "ask-state-providers is not available" unless PROVIDER_AVAILABLE && defined?(Ask::State::Providers::SQLite)
+
+    Dir.mktmpdir("ask-agent-restart") do |dir|
+      db_path = File.join(dir, "sessions.db")
+
+      adapter1 = Ask::State::Providers::SQLite.new(path: db_path)
+      store1 = Ask::Session::ProviderStore.new(adapter: adapter1)
+      host1 = Ask::Session::Host.new(store: store1)
+
+      original = FakeAgent.new(id: "restart-1")
+      first = Ask::Agent::SessionAdapter.create(agent: original, host: host1)
+      first.run("persist me")
+      assert_equal 1, original.turn_count
+      adapter1.close
+
+      adapter2 = Ask::State::Providers::SQLite.new(path: db_path)
+      store2 = Ask::Session::ProviderStore.new(adapter: adapter2)
+      host2 = Ask::Session::Host.new(store: store2)
+
+      record = host2.session("restart-1")
+      assert_equal "restart-1", record.id
+      assert_equal :active, record.status
+
+      snapshot_event = host2.events("restart-1").reverse_each.find { |e| e.type == "agent.snapshot" }
+      refute_nil snapshot_event
+      assert_kind_of Array, snapshot_event.payload[:messages]
+      assert_equal 1, snapshot_event.payload[:turn_count]
+      assert_equal :user, snapshot_event.payload[:messages].first[:role]
+      assert_equal "persist me", snapshot_event.payload[:messages].first[:content]
+
+      restored_agent = FakeAgent.new(id: "restart-1")
+      restored = Ask::Agent::SessionAdapter.resume(
+        agent: restored_agent, host: host2, session_id: "restart-1"
+      )
+
+      contents = restored_agent.chat.messages.map { |m| [m.role, m.content] }
+      assert_includes contents, [:user, "persist me"]
+      assert_includes contents, [:assistant, "ok"]
+      assert_equal original.turn_count, restored_agent.turn_count
+      assert_equal 1, restored_agent.turn_count
+      assert_equal restored_agent.chat.messages.size, restored_agent.messages.size
+      refute_empty restored_agent.messages
+
+      result = restored.run("follow up after restart")
+      assert_equal "ok", result
+      assert_equal 2, restored_agent.turn_count
+      assert_includes host2.events("restart-1").map(&:type), "agent.snapshot"
+
+      adapter2.close
+    end
   end
 
   # --- failed run ---
