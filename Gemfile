@@ -4,9 +4,15 @@ gemspec
 
 gem "ostruct"
 gem "ask-core"
-gem "ask-runtime", path: "../ask-runtime"
-gem "ask-session", path: "../ask-session"
-gem "ask-state-providers", path: "../ask-state-providers"
+
+# Prefer local sibling checkouts when they exist (development against
+# unreleased gems); otherwise resolve from rubygems.org so a standalone
+# clone (e.g. CI) can bundle.
+%w[ask-runtime ask-session ask-state-providers].each do |name|
+  sibling = File.expand_path("../#{name}", __dir__)
+  gem name, path: sibling if File.directory?(sibling)
+end
+
 gem "ask-llm-providers"
 gem "ask-tools"
 gem "ask-tools-shell"
