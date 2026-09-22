@@ -52,9 +52,9 @@ module Ask
 
       # Attach to an existing ask-session and restore the latest snapshot.
       #
-      # Contract: Ask::Session::Host#session raises
-      # Ask::Session::NotFoundError for a missing record (it never returns
-      # nil); both missing-session and missing-snapshot failures surface as
+      # Contract: Ask::Session::Host raises Ask::Session::NotFoundError for
+      # a missing record on both #session and #events (it never returns
+      # nil); missing-session and missing-snapshot failures surface as
       # SessionAdapter::Error.
       #
       # @param agent [Ask::Agent::Session] the agent session (will be populated from snapshot)
@@ -65,11 +65,11 @@ module Ask
       def self.resume(agent:, host:, session_id:)
         begin
           host.session(session_id)
+          events = host.events(session_id)
         rescue Ask::Session::NotFoundError
           raise Error, "Session not found: #{session_id.inspect}"
         end
 
-        events = host.events(session_id)
         snapshot_event = events.reverse_each.find { |e| e.type == SNAPSHOT_TYPE }
         raise Error, "No snapshot found for session #{session_id.inspect}" unless snapshot_event
 

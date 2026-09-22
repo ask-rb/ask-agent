@@ -1,5 +1,13 @@
 ## [Unreleased]
 
+### Fixed
+
+- **`SessionAdapter.resume` surfaces every ask-session miss as
+  `SessionAdapter::Error`.** The `Host#events` lookup ran outside the
+  `Ask::Session::NotFoundError` rescue, so a missing record reported by the
+  events fetch leaked the ask-session error across the adapter boundary
+  instead of the documented `SessionAdapter::Error`.
+
 
 ## [0.40.21] — 2026-09-22
 
