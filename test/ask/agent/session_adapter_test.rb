@@ -267,6 +267,19 @@ class SessionAdapterTest < Minitest::Test
     assert_match(/not found/i, error.message)
   end
 
+  def test_resume_missing_events_raises_adapter_error
+    @host.create(id: "events-missing")
+    agent = FakeAgent.new(id: "events-missing")
+    @host.stubs(:events).raises(Ask::Session::NotFoundError, "Session not found: events-missing")
+
+    error = assert_raises(Ask::Agent::SessionAdapter::Error) do
+      Ask::Agent::SessionAdapter.resume(agent: agent, host: @host, session_id: "events-missing")
+    end
+
+    assert_match(/events-missing/, error.message)
+    assert_match(/not found/i, error.message)
+  end
+
   def test_resume_missing_snapshot_raises_adapter_error
     @host.create(id: "no-snap")
     agent = FakeAgent.new
