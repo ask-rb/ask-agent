@@ -76,12 +76,18 @@ module Ask
         payload = snapshot_event.payload
         messages = payload[:messages] || payload["messages"] || []
 
+        # Validate before mutating the agent so a malformed snapshot cannot
+        # leave it half-restored.
+        messages.each do |msg|
+          role = msg.is_a?(Hash) ? (msg[:role] || msg["role"]) : nil
+          raise Error, "Snapshot for session #{session_id.inspect} contains a message without a role" unless role
+        end
+
         agent.instance_variable_set(:@turn_count, payload[:turn_count] || payload["turn_count"] || 0)
         agent.chat.reset_messages!
         messages.each do |msg|
-          role = (msg[:role] || msg["role"]).to_sym
           agent.chat.add_message(
-            role: role,
+            role: (msg[:role] || msg["role"]).to_sym,
             content: deserialize_content(msg[:content] || msg["content"]),
             tool_call_id: msg[:tool_call_id] || msg["tool_call_id"],
             tool_calls: msg[:tool_calls] || msg["tool_calls"]

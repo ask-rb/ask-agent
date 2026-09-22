@@ -189,6 +189,55 @@ class SessionTest < Minitest::Test
     assert events.any?
   end
 
+  # Askable chat double: Session#build_chat uses it directly as the model,
+  # so a real loop run can drive the session without a provider.
+  class EchoChat
+    attr_reader :messages, :model
+
+    def initialize
+      @messages = []
+      @model = OpenStruct.new(id: "gpt-4o")
+    end
+
+    def model_id = "gpt-4o"
+    def with_instructions(*) = self
+
+    def ask(message = nil, attachments: nil)
+      @messages << Ask::Message.new(role: :user, content: message.to_s) if message && !message.to_s.empty?
+      @messages << Ask::Message.new(role: :assistant, content: "echo")
+      Ask::Agent::ResponseMessage.new(
+        content: "echo", tool_calls: {}, tool_results: {},
+        thinking: nil, input_tokens: nil, output_tokens: nil, cost: nil
+      )
+    end
+
+    def add_message(role:, content: nil, tool_call_id: nil, tool_calls: nil, attachments: nil)
+      @messages << Ask::Message.new(role: role, content: content, tool_call_id: tool_call_id, tool_calls: tool_calls)
+    end
+
+    def reset_messages! = @messages.clear
+  end
+
+  def test_run_counts_turns_in_session_and_session_end_event
+    s = Ask::Agent::Session.new(model: EchoChat.new, tools: [])
+    ends = []
+    s.on(Ask::Agent::Events::SessionEnd) { |e| ends << e }
+
+    s.run("hello")
+    assert_equal 1, s.turn_count
+    assert_equal 1, ends.last.turn_count
+
+    # reset: true (the default) scopes the count to the run.
+    s.run("again")
+    assert_equal 1, s.turn_count
+    assert_equal 1, ends.last.turn_count
+
+    # reset: false (follow-up runs) accumulates like the loop does.
+    s.run("", reset: false)
+    assert_equal 2, s.turn_count
+    assert_equal 2, ends.last.turn_count
+  end
+
   def test_run_stores_messages_after_completion
     Ask::Agent::Chat.stubs(:new).returns(@chat_stub)
     Ask::Agent::Loop.any_instance.stubs(:run_turn).returns("response")
