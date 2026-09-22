@@ -17,7 +17,7 @@ module Ask
       @max_consecutive_tool_turns = max_consecutive_tool_turns
       end
 
-      def run_turn(chat:, message:, tools:, tool_executor:, compactor:, hooks:, event_emitter:, session_id: nil, persist: nil, tool_call_repair: nil, steer_source: nil, attachments: nil)
+      def run_turn(chat:, message:, tools:, tool_executor:, compactor:, hooks:, event_emitter:, session_id: nil, persist: nil, tool_call_repair: nil, steer_source: nil, attachments: nil, runtime_event_sink: nil)
         raise MaxTurnsExceeded if @turn_count >= @max_turns
 
         event_emitter.emit(Events::TurnStart.new)
@@ -104,6 +104,7 @@ module Ask
           user_results = tool_executor.execute(
             user_tool_calls, tools, hooks: hooks, event_emitter: event_emitter,
             session_id: session_id, turn: @turn_count,
+            runtime_event_sink: runtime_event_sink,
             result_callback: lambda do |tool_call_id, result|
               tc = user_tool_calls[tool_call_id]
               next unless tc
@@ -175,7 +176,8 @@ module Ask
           session_id: session_id,
           persist: persist,
           tool_call_repair: tool_call_repair,
-          steer_source: steer_source
+          steer_source: steer_source,
+          runtime_event_sink: runtime_event_sink
         )
       end
 

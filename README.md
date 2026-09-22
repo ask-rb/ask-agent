@@ -34,6 +34,24 @@ session.on_event do |event|
 end
 ```
 
+To also record provider-neutral ask-runtime tool lifecycle events, pass an
+event sink to `Session#run`. For example, when using ask-session:
+
+```ruby
+require "ask-session"
+
+host = Ask::Session::Host.new
+host.create(id: session.id)
+runtime_sink = host.sink(session.id)
+session.run("What files are here?", runtime_event_sink: runtime_sink)
+```
+
+The sink receives tool start and terminal events, including failures,
+cancellations, and timeouts. Leave `runtime_event_sink` unset if you do not
+need this additional lifecycle stream. Integrations that already persist
+protocol-facing tool events should avoid attaching a second sink to the same
+host for those executions.
+
 ## Declarative Agents
 
 Agents follow a file convention. Each agent lives in a directory under
@@ -75,7 +93,7 @@ in `agents/<name>/skills/`, shared skills in `agents/shared/skills/`.
 | Entry point | Purpose |
 |---|---|
 | `Ask::Agent::Session.new(model:, tools: [], max_turns: 25, ...)` | Full agent loop: message, tool calls, results, follow-up |
-| `session.run(message)` | Run the loop for one message |
+| `session.run(message, runtime_event_sink: nil)` | Run the loop for one message; optionally emit ask-runtime tool lifecycle events to a sink |
 | `session.on_event { \|e\| }` | Stream `Ask::Agent::Events` (text deltas, tool execution, evaluation) |
 | `Ask::Agent.new("name")` | Build a session from a declarative agent definition |
 | `Ask.chat(message)` | One-shot chat without instantiating a Session |

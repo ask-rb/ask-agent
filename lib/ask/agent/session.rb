@@ -288,7 +288,7 @@ module Ask
       #   (only when the +artifacts:+ option is enabled)
       attr_reader :artifact_store
 
-      def run(message, tools: nil, reset: true, attachments: nil)
+      def run(message, tools: nil, reset: true, attachments: nil, runtime_event_sink: nil)
         raise "Session deleted" if @deleted
         raise "Session already running" if @running
 
@@ -331,7 +331,8 @@ module Ask
 	            session_id: @id,
             tool_call_repair: @tool_call_repair,
             steer_source: method(:drain_one_steer),
-	            persist: @state ? method(:persist!) : nil
+	            persist: @state ? method(:persist!) : nil,
+	            runtime_event_sink: runtime_event_sink
 	          )
 
           @total_input_tokens += @loop.last_input_tokens.to_i
@@ -409,7 +410,8 @@ module Ask
               hooks: @hooks,
               event_emitter: self,
               session_id: @id,
-              tool_call_repair: @tool_call_repair
+              tool_call_repair: @tool_call_repair,
+              runtime_event_sink: runtime_event_sink
             )
 
             @total_input_tokens += @loop.last_input_tokens.to_i
@@ -449,7 +451,8 @@ module Ask
               hooks: @hooks,
               event_emitter: self,
               session_id: @id,
-              tool_call_repair: @tool_call_repair
+              tool_call_repair: @tool_call_repair,
+              runtime_event_sink: runtime_event_sink
             )
 
             @total_input_tokens += @loop.last_input_tokens.to_i
