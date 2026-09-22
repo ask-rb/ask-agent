@@ -21,6 +21,7 @@ $LOAD_PATH.unshift File.expand_path("../../ask-llm-providers/lib", __dir__)
 $LOAD_PATH.unshift File.expand_path("../../ask-state-providers/lib", __dir__)
 $LOAD_PATH.unshift File.expand_path("../../ask-runtime/lib", __dir__)
 $LOAD_PATH.unshift File.expand_path("../../ask-session/lib", __dir__)
+$LOAD_PATH.unshift File.expand_path("../../ask-permissions/lib", __dir__)
 require "ask/runtime/testing"
 
 require "ask/errors"

@@ -4,6 +4,20 @@
 
 - **`Session#run(runtime_event_sink:)` forwards ask-runtime tool lifecycle events** through the agent loop and recursive turns to `ToolExecutor#execute_batch`.
 
+### Changed
+
+- **Permission machinery extracted to the `ask-permissions` gem.**
+  `Ask::Agent::ApprovalQueue`, `Ask::Agent::Policies::ApprovalPolicy`,
+  `Ask::Agent::Policies::PermissionRules`, and
+  `Ask::Agent::Policies::Permissions` are removed from ask-agent; the same
+  classes now ship as `Ask::Permissions::ApprovalQueue`,
+  `Ask::Permissions::ApprovalPolicy`, `Ask::Permissions::PermissionRules`,
+  and `Ask::Permissions::Permissions` behind `require "ask/permissions"`.
+  Session keeps its agent-specific wiring — the `approval:` option still
+  builds the queue, wires on_approve/on_reject/on_submit callbacks, and
+  prepends the policy hook; the plan queue is unchanged apart from the
+  constant. Requires the new runtime dependency `ask-permissions >= 0.1.0`.
+
 ### Fixed
 
 - **`SessionAdapter.resume` surfaces every ask-session miss as

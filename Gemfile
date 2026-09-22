@@ -8,7 +8,7 @@ gem "ask-core"
 # Prefer local sibling checkouts when they exist (development against
 # unreleased gems); otherwise resolve from rubygems.org so a standalone
 # clone (e.g. CI) can bundle.
-%w[ask-runtime ask-session ask-state-providers].each do |name|
+%w[ask-runtime ask-session ask-state-providers ask-permissions].each do |name|
   sibling = File.expand_path("../#{name}", __dir__)
   gem name, path: sibling if File.directory?(sibling)
 end
