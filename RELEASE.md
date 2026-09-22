@@ -1,5 +1,9 @@
 # Release Process — ask-agent
 
+Version numbers, bump rules, and the release invariants are governed by
+[VERSIONING.md](VERSIONING.md), this repository's canonical versioning
+policy.
+
 ## Prerequisites
 
 - All tests pass: `bundle exec rake test`
