@@ -102,6 +102,35 @@ under multiple OpenAI-compatible providers). A `provider:` passed to
 `Session.new` or declared in an agent `Definition` always wins over the global
 default.
 
+## Durable sessions (ask-session)
+
+`Ask::Agent::SessionAdapter` bridges a session to an event-sourced
+`Ask::Session::Host`. Every run records the user input, the mapped agent
+events, and an `agent.snapshot`; `SessionAdapter.resume` restores the latest
+snapshot — including after a process restart, as long as the host store is
+durable (for example `Ask::Session::ProviderStore` over
+`ask-state-providers`' SQLite adapter).
+
+```ruby
+require "ask-agent"
+require "ask/session"
+
+host = Ask::Session::Host.new(store: Ask::Session::Store.new)
+
+session = Ask::Agent::Session.new(model: "gpt-4o", id: "chat-1")
+adapter = Ask::Agent::SessionAdapter.create(agent: session, host: host)
+adapter.run("Hello")
+
+# Later (even in a new process, with the same durable store):
+resumed = Ask::Agent::Session.new(model: "gpt-4o", id: "chat-1")
+adapter = Ask::Agent::SessionAdapter.resume(agent: resumed, host: host, session_id: "chat-1")
+adapter.run("Continue where we left off")
+```
+
+`SessionAdapter::Error` is raised when the session record or its latest
+snapshot cannot be found. This requires the `ask-session` gem (a runtime
+dependency of ask-agent).
+
 ## Full documentation
 
 The full ask-rb documentation lives at https://ask-rb.github.io/ask-docs.

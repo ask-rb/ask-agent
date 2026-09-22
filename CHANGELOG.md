@@ -7,8 +7,21 @@
   event-sourced ask-session events, maps agent events (turn, streaming,
   tool, todo, plan, error) onto session event types with `trace_id` /
   `causation_id` propagation, and resumes from the latest snapshot
-  (`SessionAdapter.resume`). Requires the new runtime dependency
+  (`SessionAdapter.resume`). Resume survives process restarts when the host
+  store is durable (e.g. `Ask::Session::ProviderStore` over
+  `ask-state-providers`). Requires the new runtime dependency
   `ask-session >= 0.1.0` (the single session store; no second store added).
+  Resume validates the snapshot before restoring, so a malformed snapshot
+  raises `SessionAdapter::Error` instead of leaving the agent half-restored.
+
+### Fixed
+
+- **`Session#turn_count` is now maintained during runs.** The counter was
+  only ever reset at run start (or restored from a checkpoint), never
+  incremented — so `SessionEnd`, audit-log entries, persisted
+  `metadata.turn_count`, and `SessionAdapter` snapshots all recorded `0` for
+  live runs. Turns are now counted on `TurnStart`, matching the loop's own
+  count (`reset: true` scopes it to the run; `reset: false` accumulates).
 
 
 ## [0.40.17] — 2026-09-18

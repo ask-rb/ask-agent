@@ -21,6 +21,38 @@ PROVIDER_AVAILABLE =
 class SessionAdapterTest < Minitest::Test
   Events = Ask::Agent::Events
 
+  # Minimal snapshot event shape for injected payloads.
+  SnapshotEvent = Struct.new(:type, :payload)
+
+  # Askable chat double: Session#build_chat uses it directly as the model,
+  # so a real Ask::Agent::Session can drive the adapter without a provider.
+  class ProviderChat
+    attr_reader :messages, :model
+
+    def initialize
+      @messages = []
+      @model = OpenStruct.new(id: "gpt-4o")
+    end
+
+    def model_id = "gpt-4o"
+    def with_instructions(*) = self
+
+    def ask(message = nil, attachments: nil)
+      @messages << Ask::Message.new(role: :user, content: message.to_s) if message && !message.to_s.empty?
+      @messages << Ask::Message.new(role: :assistant, content: "reply")
+      Ask::Agent::ResponseMessage.new(
+        content: "reply", tool_calls: {}, tool_results: {},
+        thinking: nil, input_tokens: nil, output_tokens: nil, cost: nil
+      )
+    end
+
+    def add_message(role:, content: nil, tool_call_id: nil, tool_calls: nil, attachments: nil)
+      @messages << Ask::Message.new(role: role, content: content, tool_call_id: tool_call_id, tool_calls: tool_calls)
+    end
+
+    def reset_messages! = @messages.clear
+  end
+
   # Minimal chat double matching the Chat methods SessionAdapter touches.
   class FakeChat
     attr_reader :messages
@@ -321,6 +353,96 @@ class SessionAdapterTest < Minitest::Test
 
       adapter2.close
     end
+  end
+
+  # --- real Ask::Agent::Session round trip ---
+
+  def test_real_session_snapshot_and_resume_round_trip
+    host = Ask::Session::Host.new(store: Ask::Session::Store.new)
+    session1 = Ask::Agent::Session.new(model: ProviderChat.new, tools: [], id: "real-session")
+    adapter = Ask::Agent::SessionAdapter.create(agent: session1, host: host)
+    adapter.run("hello world")
+
+    snapshot = host.events("real-session").find { |e| e.type == "agent.snapshot" }
+    refute_nil snapshot
+    assert_equal 1, snapshot.payload[:turn_count], "snapshot must record the real turn count"
+    assert_equal 1, session1.turn_count
+    contents = snapshot.payload[:messages].map { |m| [m[:role], m[:content]] }
+    assert_includes contents, [:user, "hello world"]
+    assert_includes contents, [:assistant, "reply"]
+
+    session2 = Ask::Agent::Session.new(model: ProviderChat.new, tools: [], id: "real-session")
+    restored = Ask::Agent::SessionAdapter.resume(agent: session2, host: host, session_id: "real-session")
+
+    assert_equal 1, session2.turn_count, "resume restores the snapshotted turn count"
+    restored_messages = session2.chat.messages.map { |m| [m.role, m.content] }
+    assert_includes restored_messages, [:user, "hello world"]
+    assert_includes restored_messages, [:assistant, "reply"]
+    assert_equal session2.chat.messages.size, session2.messages.size
+
+    result = restored.run("follow up")
+    assert_equal "reply", result
+    # Session#run(reset: true) scopes turn_count to the run, so the next
+    # run after a resume starts counting from 1 again.
+    assert_equal 1, session2.turn_count
+    snapshots = host.events("real-session").select { |e| e.type == "agent.snapshot" }
+    assert_operator snapshots.size, :>=, 2, "each run appends a new snapshot"
+  end
+
+  # --- snapshot payload compatibility ---
+
+  def test_resume_accepts_string_keyed_snapshot_payload
+    @host.create(id: "json-snap")
+    agent = FakeAgent.new(id: "json-snap")
+
+    @host.stubs(:events).returns([SnapshotEvent.new(
+      "agent.snapshot",
+      {
+        "messages" => [
+          { "role" => "user", "content" => "hi" },
+          { "role" => "assistant", "content" => [{ "type" => "text", "text" => "hello" }] },
+          { "role" => "assistant",
+            "tool_calls" => [{ "id" => "call_1", "type" => "function", "name" => "search", "arguments" => "{}" }] }
+        ],
+        "turn_count" => 3
+      }
+    )])
+
+    Ask::Agent::SessionAdapter.resume(agent: agent, host: @host, session_id: "json-snap")
+
+    assert_equal 3, agent.turn_count
+    assert_equal %i[user assistant assistant], agent.chat.messages.map(&:role)
+
+    blocks = agent.chat.messages[1].content_blocks
+    assert_kind_of Array, blocks
+    assert_instance_of Ask::Content::Text, blocks.first
+    assert_equal "hello", blocks.first.text
+
+    tool_calls = agent.chat.messages[2].tool_calls
+    assert_equal "call_1", tool_calls.first["id"] || tool_calls.first[:id]
+    assert_equal agent.chat.messages.size, agent.messages.size
+  end
+
+  def test_resume_malformed_snapshot_raises_without_mutating_agent
+    @host.create(id: "bad-snap")
+    agent = FakeAgent.new(id: "bad-snap")
+    agent.chat.add_message(role: :user, content: "preexisting")
+    agent.instance_variable_set(:@messages, agent.chat.messages.dup)
+    agent.instance_variable_set(:@turn_count, 7)
+
+    @host.stubs(:events).returns([SnapshotEvent.new(
+      "agent.snapshot",
+      { messages: [{ content: "no role here" }], turn_count: 99 }
+    )])
+
+    error = assert_raises(Ask::Agent::SessionAdapter::Error) do
+      Ask::Agent::SessionAdapter.resume(agent: agent, host: @host, session_id: "bad-snap")
+    end
+    assert_match(/role/i, error.message)
+
+    assert_equal 7, agent.turn_count, "failed resume must not touch turn_count"
+    assert_equal ["preexisting"], agent.chat.messages.map(&:content),
+                 "failed resume must not reset chat messages"
   end
 
   # --- failed run ---

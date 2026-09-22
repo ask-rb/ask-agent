@@ -107,7 +107,10 @@ module Ask
         @turn_id = 0
         @queued_steers = []
         @steer_mutex = Mutex.new
-        on(Events::TurnStart) { @turn_id += 1 }
+        on(Events::TurnStart) do
+          @turn_id += 1
+          @turn_count += 1
+        end
         @created_at = Time.now
         @_no_tools_instructed = false
 
