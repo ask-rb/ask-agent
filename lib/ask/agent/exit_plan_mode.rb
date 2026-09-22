@@ -20,7 +20,7 @@ module Ask
 
       param :plan, type: :string, desc: "The plan you propose to execute", required: true
 
-      # @param plan_queue [Ask::Agent::ApprovalQueue] queue carrying plan
+      # @param plan_queue [Ask::Permissions::ApprovalQueue] queue carrying plan
       #   approvals; the session wires approve/reject callbacks
       # @param on_submit [Proc, nil] called with the plan text when the plan
       #   is submitted (used to emit PlanProposed)

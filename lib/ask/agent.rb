@@ -9,6 +9,7 @@ require "ask-llm-providers"
 require "ask-tools"
 require "ask-state-providers"
 require "ask-runtime"
+require "ask/permissions"
 
 module Ask
   module Agent
@@ -29,15 +30,12 @@ module Ask
     # swap them freely (see Ask::Agent::Hooks for the seam).
     #
     # A policy is NOT core machinery. Core mechanisms live on Session — the
-    # approval queue, the :pending result status, and the `approval: true`
-    # option are core; Policies::ApprovalPolicy is the reference
-    # classification policy wired on top of them.
+    # :pending result status and the `approval: true` option are core;
+    # Ask::Permissions::ApprovalPolicy (from the ask-permissions gem) is the
+    # reference classification policy wired on top of them.
     module Policies
-      autoload :Permissions, "ask/agent/policies/permissions"
       autoload :RateLimiter, "ask/agent/policies/rate_limiter"
       autoload :AuditLog, "ask/agent/policies/audit_log"
-      autoload :ApprovalPolicy, "ask/agent/policies/approval_policy"
-      autoload :PermissionRules, "ask/agent/policies/permission_rules"
     end
 
     autoload :ToolCallRepair, "ask/agent/tool_call_repair"
@@ -223,7 +221,6 @@ require_relative "agent/evaluator"
 require_relative "agent/tool_executor"
 require_relative "agent/compactor"
 require_relative "agent/hooks"
-require_relative "agent/approval_queue"
 require_relative "agent/configuration"
 require_relative "agent/meta_agent"
 require_relative "agent/persistence/base"

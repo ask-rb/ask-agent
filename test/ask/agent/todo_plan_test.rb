@@ -250,7 +250,7 @@ module Ask
       def test_plan_mode_injects_exit_tool_and_starts_in_plan_mode
         session = build_session(plan_mode: true, tools: [PlanWriteTool.new])
         assert_predicate session, :plan_mode?
-        assert_instance_of ApprovalQueue, session.plan_queue
+        assert_instance_of Ask::Permissions::ApprovalQueue, session.plan_queue
         assert_includes session.instance_variable_get(:@tools).map(&:name), "exit_plan_mode"
       end
 

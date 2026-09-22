@@ -2,6 +2,8 @@
 
 require_relative "../../../test_helper"
 
+# Contract tests for Ask::Permissions::ApprovalPolicy (from ask-permissions),
+# the classification hook Session prepends when approval is enabled.
 class ApprovalPolicyTest < Minitest::Test
   class ApprovalTool < Ask::Tool
     description "Needs approval"
@@ -28,11 +30,11 @@ class ApprovalPolicyTest < Minitest::Test
   end
 
   def setup
-    @queue = Ask::Agent::ApprovalQueue.new
+    @queue = Ask::Permissions::ApprovalQueue.new
   end
 
   def build_policy(**opts)
-    Ask::Agent::Policies::ApprovalPolicy.new(
+    Ask::Permissions::ApprovalPolicy.new(
       queue: @queue, tools: [ApprovalTool.new, AutoTool.new, PlainTool.new], **opts
     )
   end
@@ -101,7 +103,7 @@ class ApprovalPolicyTest < Minitest::Test
   # --- permission rules ---
 
   def build_rules(&block)
-    Ask::Agent::Policies::PermissionRules.new(&block)
+    Ask::Permissions::PermissionRules.new(&block)
   end
 
   def test_rules_deny_blocks
@@ -158,8 +160,8 @@ class ApprovalPolicyTest < Minitest::Test
   # --- auto-approval dual signal ---
 
   def test_auto_approve_rule_enables_flagged_tool
-    queue = Ask::Agent::ApprovalQueue.new(auto_approve: { "auto" => true })
-    policy = Ask::Agent::Policies::ApprovalPolicy.new(
+    queue = Ask::Permissions::ApprovalQueue.new(auto_approve: { "auto" => true })
+    policy = Ask::Permissions::ApprovalPolicy.new(
       queue: queue, tools: [AutoTool.new]
     )
     result = policy.before_tool_call(tool_call("auto"), {})
@@ -169,8 +171,8 @@ class ApprovalPolicyTest < Minitest::Test
   end
 
   def test_rule_on_non_flagged_tool_stays_queued
-    queue = Ask::Agent::ApprovalQueue.new(auto_approve: { "approval" => true })
-    policy = Ask::Agent::Policies::ApprovalPolicy.new(
+    queue = Ask::Permissions::ApprovalQueue.new(auto_approve: { "approval" => true })
+    policy = Ask::Permissions::ApprovalPolicy.new(
       queue: queue, tools: [ApprovalTool.new]
     )
     result = policy.before_tool_call(tool_call("approval"), {})
@@ -184,10 +186,10 @@ class ApprovalPolicyTest < Minitest::Test
   def test_duck_typed_tool_requires_rule
     duck = Object.new
     duck.define_singleton_method(:name) { "duck_tool" }
-    policy = Ask::Agent::Policies::ApprovalPolicy.new(queue: @queue, tools: [duck])
+    policy = Ask::Permissions::ApprovalPolicy.new(queue: @queue, tools: [duck])
     assert_equal :proceed, policy.before_tool_call(tool_call("duck_tool"), {})[:action]
 
-    policy = Ask::Agent::Policies::ApprovalPolicy.new(
+    policy = Ask::Permissions::ApprovalPolicy.new(
       queue: @queue, tools: [duck], require_approval: ["duck_tool"]
     )
     assert_equal :pending, policy.before_tool_call(tool_call("duck_tool"), {})[:action]

@@ -80,7 +80,7 @@ class SessionApprovalIntegrationTest < Minitest::Test
   def test_session_with_approval_true_has_queue
     Ask::Agent::Chat.stubs(:new).returns(build_chat_stub)
     s = Ask::Agent::Session.new(model: "gpt-4o", tools: [], approval: true)
-    assert_instance_of Ask::Agent::ApprovalQueue, s.approval_queue
+    assert_instance_of Ask::Permissions::ApprovalQueue, s.approval_queue
   end
 
   def test_session_with_approval_hash_passes_policy_options
@@ -89,12 +89,12 @@ class SessionApprovalIntegrationTest < Minitest::Test
       model: "gpt-4o", tools: [],
       approval: { require_approval: ["some_tool"], auto_approve: { "other" => true } }
     )
-    assert_instance_of Ask::Agent::ApprovalQueue, s.approval_queue
+    assert_instance_of Ask::Permissions::ApprovalQueue, s.approval_queue
   end
 
   def test_session_with_existing_queue_uses_it
     Ask::Agent::Chat.stubs(:new).returns(build_chat_stub)
-    queue = Ask::Agent::ApprovalQueue.new
+    queue = Ask::Permissions::ApprovalQueue.new
     s = Ask::Agent::Session.new(model: "gpt-4o", tools: [], approval: queue)
     assert_same queue, s.approval_queue
   end
@@ -132,7 +132,7 @@ class SessionApprovalIntegrationTest < Minitest::Test
     ])
     Ask::Agent::Chat.stubs(:new).returns(chat)
 
-    rules = Ask::Agent::Policies::PermissionRules.new { deny :email }
+    rules = Ask::Permissions::PermissionRules.new { deny :email }
     s = Ask::Agent::Session.new(
       model: "gpt-4o", tools: [EmailTool.new],
       approval: { rules: rules }
@@ -154,7 +154,7 @@ class SessionApprovalIntegrationTest < Minitest::Test
     Ask::Agent::Chat.stubs(:new).returns(chat)
 
     # email is approval_required — an explicit allow rule overrides it.
-    rules = Ask::Agent::Policies::PermissionRules.new { allow :email }
+    rules = Ask::Permissions::PermissionRules.new { allow :email }
     s = Ask::Agent::Session.new(
       model: "gpt-4o", tools: [EmailTool.new],
       approval: { rules: rules }
@@ -176,7 +176,7 @@ class SessionApprovalIntegrationTest < Minitest::Test
     Ask::Agent::Chat.stubs(:new).returns(chat)
 
     # Unrestricted allow on a code-executing tool downgrades to ask.
-    rules = Ask::Agent::Policies::PermissionRules.new { allow :bash }
+    rules = Ask::Permissions::PermissionRules.new { allow :bash }
     s = Ask::Agent::Session.new(
       model: "gpt-4o", tools: [SafeTool.new],
       approval: { rules: rules }
@@ -283,7 +283,7 @@ class SessionApprovalIntegrationTest < Minitest::Test
 
   # --- Custom queue: default callbacks are wired ---
 
-  class EmittingQueue < Ask::Agent::ApprovalQueue
+  class EmittingQueue < Ask::Permissions::ApprovalQueue
     attr_reader :submitted, :changed
 
     def initialize(*)

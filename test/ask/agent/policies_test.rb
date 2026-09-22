@@ -9,34 +9,34 @@ class PoliciesTest < Minitest::Test
     @call = OpenStruct.new(name: "write", id: "call_1", arguments: { path: "test.txt" })
   end
 
-  # --- Permissions ---
+  # --- Permissions (ask-permissions gem) ---
 
   def test_permissions_blocks_by_default
-    gate = Ask::Agent::Policies::Permissions.new
+    gate = Ask::Permissions::Permissions.new
     result = gate.before_tool_call(@call, {})
     assert_equal :block, result[:action]
   end
 
   def test_permissions_allows_safe_tools
-    gate = Ask::Agent::Policies::Permissions.new
+    gate = Ask::Permissions::Permissions.new
     read_call = OpenStruct.new(name: "read", id: "call_2", arguments: {})
     result = gate.before_tool_call(read_call, {})
     assert_equal :proceed, result[:action]
   end
 
   def test_permissions_approve
-    gate = Ask::Agent::Policies::Permissions.new
+    gate = Ask::Permissions::Permissions.new
     gate.before_tool_call(@call, {})
     assert gate.approve("call_1")
   end
 
   def test_permissions_approve_unknown_key
-    gate = Ask::Agent::Policies::Permissions.new
+    gate = Ask::Permissions::Permissions.new
     refute gate.approve("nonexistent_call")
   end
 
   def test_permissions_pending_approvals
-    gate = Ask::Agent::Policies::Permissions.new
+    gate = Ask::Permissions::Permissions.new
     gate.before_tool_call(@call, {})
     pending = gate.pending_approvals
     assert_equal 1, pending.size
@@ -44,7 +44,7 @@ class PoliciesTest < Minitest::Test
   end
 
   def test_permissions_approved_after_approve
-    gate = Ask::Agent::Policies::Permissions.new
+    gate = Ask::Permissions::Permissions.new
     gate.before_tool_call(@call, {})
     gate.approve("call_1")
     result = gate.__send__(:approved?, @call)
@@ -52,38 +52,38 @@ class PoliciesTest < Minitest::Test
   end
 
   def test_permissions_custom_blocked_tools
-    gate = Ask::Agent::Policies::Permissions.new(blocked_tools: [:read, :write])
+    gate = Ask::Permissions::Permissions.new(blocked_tools: [:read, :write])
     write_call = OpenStruct.new(name: "read", id: "call_3", arguments: {})
     result = gate.before_tool_call(write_call, {})
     assert_equal :block, result[:action]
   end
 
   def test_permissions_full_access_mode
-    gate = Ask::Agent::Policies::Permissions.new(mode: :full_access)
+    gate = Ask::Permissions::Permissions.new(mode: :full_access)
     result = gate.before_tool_call(@call, {})
     assert_equal :proceed, result[:action]
   end
 
   def test_permissions_read_only_mode
-    gate = Ask::Agent::Policies::Permissions.new(mode: :read_only)
+    gate = Ask::Permissions::Permissions.new(mode: :read_only)
     result = gate.before_tool_call(@call, {})
     assert_equal :block, result[:action]
   end
 
   def test_permissions_ask_before_changes_mode
-    gate = Ask::Agent::Policies::Permissions.new(mode: :ask_before_changes)
+    gate = Ask::Permissions::Permissions.new(mode: :ask_before_changes)
     result = gate.before_tool_call(@call, {})
     assert_equal :block, result[:action]
   end
 
   def test_permissions_invalid_mode_raises
     assert_raises(ArgumentError) do
-      Ask::Agent::Policies::Permissions.new(mode: :invalid_mode)
+      Ask::Permissions::Permissions.new(mode: :invalid_mode)
     end
   end
 
-  def test_permissions_loads_via_autoload
-    assert Ask::Agent::Policies::Permissions
+  def test_permissions_is_available
+    assert Ask::Permissions::Permissions
   end
 
   # --- RateLimiter ---

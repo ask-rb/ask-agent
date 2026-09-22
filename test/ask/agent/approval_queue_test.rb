@@ -2,11 +2,13 @@
 
 require_relative "../../test_helper"
 
+# Contract tests for Ask::Permissions::ApprovalQueue (from ask-permissions),
+# the queue ask-agent's session and plan mode build on.
 class ApprovalQueueTest < Minitest::Test
   def setup
     @approved = []
     @rejected = []
-    @queue = Ask::Agent::ApprovalQueue.new(
+    @queue = Ask::Permissions::ApprovalQueue.new(
       on_approve: ->(action) { @approved << action },
       on_reject: ->(action) { @rejected << action }
     )
@@ -123,7 +125,7 @@ class ApprovalQueueTest < Minitest::Test
   # --- auto-approval (dual signal) ---
 
   def test_auto_approve_requires_action_flagged_and_rule_enabled
-    queue = Ask::Agent::ApprovalQueue.new(
+    queue = Ask::Permissions::ApprovalQueue.new(
       on_approve: ->(action) { @approved << action },
       auto_approve: { "send_email" => true }
     )
@@ -135,7 +137,7 @@ class ApprovalQueueTest < Minitest::Test
   end
 
   def test_auto_approve_requires_rule_enabled
-    queue = Ask::Agent::ApprovalQueue.new(
+    queue = Ask::Permissions::ApprovalQueue.new(
       on_approve: ->(action) { @approved << action }
     )
     # Action marked auto-approvable but NO rule enabled → stays pending
@@ -145,7 +147,7 @@ class ApprovalQueueTest < Minitest::Test
   end
 
   def test_auto_approve_requires_action_flagged
-    queue = Ask::Agent::ApprovalQueue.new(
+    queue = Ask::Permissions::ApprovalQueue.new(
       on_approve: ->(action) { @approved << action },
       auto_approve: { "send_email" => true }
     )
@@ -156,7 +158,7 @@ class ApprovalQueueTest < Minitest::Test
   end
 
   def test_auto_approve_stops_at_manual_gate
-    queue = Ask::Agent::ApprovalQueue.new(
+    queue = Ask::Permissions::ApprovalQueue.new(
       on_approve: ->(action) { @approved << action },
       auto_approve: { "safe" => true }
     )
@@ -173,7 +175,7 @@ class ApprovalQueueTest < Minitest::Test
 
   def test_drain_single_flight_no_double_apply
     calls = 0
-    queue = Ask::Agent::ApprovalQueue.new(
+    queue = Ask::Permissions::ApprovalQueue.new(
       on_approve: ->(action) { calls += 1 },
       auto_approve: { "safe" => true }
     )
@@ -184,7 +186,7 @@ class ApprovalQueueTest < Minitest::Test
   # --- apply failure leaves action retryable ---
 
   def test_apply_failure_restores_pending
-    queue = Ask::Agent::ApprovalQueue.new(
+    queue = Ask::Permissions::ApprovalQueue.new(
       on_approve: ->(action) { raise "boom" }
     )
     id = queue.submit(tool_call_id: "call_1", tool_name: "a")
@@ -195,7 +197,7 @@ class ApprovalQueueTest < Minitest::Test
   # --- reject after failed apply ---
 
   def test_reject_after_failed_apply
-    queue = Ask::Agent::ApprovalQueue.new(
+    queue = Ask::Permissions::ApprovalQueue.new(
       on_approve: ->(action) { raise "boom" }
     )
     id = queue.submit(tool_call_id: "call_1", tool_name: "a")
@@ -208,7 +210,7 @@ class ApprovalQueueTest < Minitest::Test
 
   def test_on_submit_fires_before_auto_approval_drain
     order = []
-    queue = Ask::Agent::ApprovalQueue.new(
+    queue = Ask::Permissions::ApprovalQueue.new(
       on_submit: ->(action) { order << :submit },
       on_approve: ->(action) { order << :apply },
       auto_approve: { "safe" => true }
@@ -223,7 +225,7 @@ class ApprovalQueueTest < Minitest::Test
 
   def test_on_submit_fires_for_manual_gate
     order = []
-    queue = Ask::Agent::ApprovalQueue.new(on_submit: ->(action) { order << action.id })
+    queue = Ask::Permissions::ApprovalQueue.new(on_submit: ->(action) { order << action.id })
     id = queue.submit(tool_call_id: "call_1", tool_name: "manual")
     assert_equal [id], order
     assert queue.pending?(id)

@@ -166,7 +166,7 @@ module Ask
         else
           %w[read glob grep web_search]
         end
-        @plan_queue = ApprovalQueue.new(
+        @plan_queue = Ask::Permissions::ApprovalQueue.new(
           on_approve: ->(action) { approve_plan(action) },
           on_reject: ->(action) { reject_plan(action) },
           # Same race closure as the tool approval queue: register the
@@ -270,9 +270,9 @@ module Ask
       # created without approval support. Use it to inspect pending actions
       # and approve/reject them.
       #
-      # @return [Ask::Agent::ApprovalQueue, nil]
+      # @return [Ask::Permissions::ApprovalQueue, nil]
       attr_reader :approval_queue
-      # @return [Ask::Agent::ApprovalQueue, nil] queue carrying plan
+      # @return [Ask::Permissions::ApprovalQueue, nil] queue carrying plan
       #   approvals (only when plan mode is enabled)
       attr_reader :plan_queue
       # @return [Ask::Agent::TodoList, nil] session task list (only when
@@ -904,12 +904,12 @@ end
 
         policy_opts = approval.is_a?(Hash) ? approval : {}
 
-        queue = if approval.is_a?(Ask::Agent::ApprovalQueue)
+        queue = if approval.is_a?(Ask::Permissions::ApprovalQueue)
           approval
-        elsif policy_opts[:queue].is_a?(Ask::Agent::ApprovalQueue)
+        elsif policy_opts[:queue].is_a?(Ask::Permissions::ApprovalQueue)
           policy_opts[:queue]
         else
-          Ask::Agent::ApprovalQueue.new(
+          Ask::Permissions::ApprovalQueue.new(
             auto_approve: policy_opts[:auto_approve],
             on_approve: ->(action) { apply_approved_action(action) },
             on_reject: ->(action) { reject_pending_action(action) }
@@ -934,7 +934,7 @@ end
           })
         }
 
-        policy = Ask::Agent::Policies::ApprovalPolicy.new(
+        policy = Ask::Permissions::ApprovalPolicy.new(
           queue: queue,
           require_approval: policy_opts[:require_approval],
           rules: policy_opts[:rules],
