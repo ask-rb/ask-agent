@@ -13,7 +13,7 @@ module Ask
       # Options accepted by the `approval:` hash. Unknown keys raise so a
       # misspelled option can never silently disable a safety control.
       APPROVAL_OPTIONS = %i[
-        queue require_approval rules auto_approve session_grants project_grants mode
+        queue require_approval rules project_rules auto_approve session_grants project_grants mode
       ].freeze
 
       attr_reader :id, :chat, :tools, :turn_count, :created_at, :messages
@@ -926,7 +926,7 @@ end
       #
       # `approval` accepts:
       #   - true            → queue with defaults
-      #   - a Hash          → { queue:, require_approval:, rules:,
+      #   - a Hash          → { queue:, require_approval:, rules:, project_rules:,
       #                         auto_approve:, session_grants:,
       #                         project_grants:, mode: } — unknown keys
       #                         raise; a nested `policy` option is not
@@ -1000,6 +1000,7 @@ end
           queue: queue,
           require_approval: policy_opts[:require_approval],
           rules: policy_opts[:rules],
+          project_rules: policy_opts[:project_rules],
           tools: @tools,
           session_grants: @session_grants,
           project_grants: @project_grants,

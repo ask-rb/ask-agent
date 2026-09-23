@@ -244,6 +244,25 @@ class SessionApprovalIntegrationTest < Minitest::Test
     refute s.pending_tools?
   end
 
+  def test_project_rules_override_default_allows_but_never_default_denies
+    chat = build_chat_stub(sequence: [
+      { tool_calls: { "call_1" => stub_tool_call(name: "email") } }
+    ])
+    Ask::Agent::Chat.stubs(:new).returns(chat)
+
+    default_rules = Ask::Permissions::PermissionRules.new { deny :email }
+    project_rules = Ask::Permissions::PermissionRules.new { allow :email }
+    session = Ask::Agent::Session.new(
+      model: "gpt-4o", tools: [EmailTool.new],
+      approval: { rules: default_rules, project_rules: project_rules }
+    )
+
+    session.run("Send an email")
+
+    assert_empty session.approval_queue.pending_actions
+    assert_equal :deny, session.approval_policy.rules.classify("email")
+  end
+
   def test_dangerous_allow_rule_queues_instead_of_running
     chat = build_chat_stub(sequence: [
       { tool_calls: { "call_1" => stub_tool_call(name: "email") } }

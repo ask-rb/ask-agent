@@ -1,5 +1,10 @@
 ## [Unreleased]
 
+### Added
+
+- Accept `project_rules:` in `approval:` and compose it with default rules
+  using deny-first precedence from `ask-permissions`.
+
 ## [0.42.0] - 2026-09-23
 ## [0.41.0] - 2026-09-23
 
