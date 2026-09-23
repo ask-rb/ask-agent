@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.41.0] - 2026-09-23
+
 - Approval decisions can now be granted for the current project through a
   host-provided `project_grants` collaborator; hosts own its persistence and
   project identity. Ask App Server supplies a workspace-scoped implementation.
@@ -48,7 +50,6 @@
   control with no signal. Accepted keys are unchanged: `queue:`,
   `require_approval:`, `rules:`, `auto_approve:`, `session_grants:`,
   `project_grants:`, and the new `mode:`.
-
 ## [0.40.30] — 2026-09-23
 
 ### Added
