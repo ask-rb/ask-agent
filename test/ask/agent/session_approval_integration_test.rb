@@ -300,15 +300,15 @@ class SessionApprovalIntegrationTest < Minitest::Test
 
     private
 
-    def apply(action)
-      result = super
-      @changed << action.with(status: :approved)
+    def apply(action, scope: :once)
+      result = super(action, scope: scope)
+      @changed << result
       result
     end
 
-    def reject_action(action)
-      result = super
-      @changed << action.with(status: :rejected)
+    def reject_action(action, feedback: nil)
+      result = super(action, feedback: feedback)
+      @changed << result
       result
     end
   end
@@ -339,6 +339,7 @@ class SessionApprovalIntegrationTest < Minitest::Test
     refute s.pending_tools?
     assert_equal 1, queue.changed.size
     assert_equal :approved, queue.changed.first.status
+    assert_equal :once, queue.changed.first.resolution_scope
   end
 
   def test_custom_queue_reject_notifies_conversation
@@ -360,6 +361,7 @@ class SessionApprovalIntegrationTest < Minitest::Test
     assert_empty queue.pending_actions
     refute s.pending_tools?
     assert_equal :rejected, queue.changed.first.status
+    assert_nil queue.changed.first.feedback
   end
 
   # --- Pending registration happens at submit time (race closure) ---
