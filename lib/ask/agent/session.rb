@@ -926,11 +926,15 @@ end
       #
       # `approval` accepts:
       #   - true            → queue with defaults
-      #   - a Hash          → { require_approval:, auto_approve:, rules:,
-      #                         mode:, queue:, session_grants:,
-      #                         project_grants: } — unknown keys raise
-      #   - an ApprovalQueue → uses it, with policy options from
-      #                        approval[:policy] if given
+      #   - a Hash          → { queue:, require_approval:, rules:,
+      #                         auto_approve:, session_grants:,
+      #                         project_grants:, mode: } — unknown keys
+      #                         raise; a nested `policy` option is not
+      #                         implemented
+      #   - an ApprovalQueue → uses it directly: policy options are not
+      #                        read from the queue, so everything runs
+      #                        with defaults except the queue's own
+      #                        existing callbacks, which are preserved
       #
       # `mode:` forwards to Ask::Permissions::ApprovalPolicy — one of
       # :full_access, :ask_before_changes, :read_only (nil = declaration-

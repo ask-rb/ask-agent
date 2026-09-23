@@ -42,7 +42,7 @@
   hand-rolling the allow/block check in `plan_mode_gate`, which now only
   checks that plan mode is still active and delegates. The gate hook is
   still installed only when plan mode is enabled, and approval still turns
-  the   gate off. Exposes the configured policy as `Session#plan_mode_policy`.
+  the gate off. Exposes the configured policy as `Session#plan_mode_policy`.
 - Unknown keys in the `approval:` hash now raise `ArgumentError` instead of
   being silently dropped — a misspelled option previously disabled a safety
   control with no signal. Accepted keys are unchanged: `queue:`,
