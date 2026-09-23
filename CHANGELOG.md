@@ -1,5 +1,15 @@
 ## [Unreleased]
 
+### Changed
+
+- **Plan-mode tool gate delegates to `Ask::Permissions::PlanModePolicy`.**
+  `Session` now configures one shared policy (`allowed_tools:` from the
+  session's read-only tool list, `exit_tool: "exit_plan_mode"`) instead of
+  hand-rolling the allow/block check in `plan_mode_gate`, which now only
+  checks that plan mode is still active and delegates. The gate hook is
+  still installed only when plan mode is enabled, and approval still turns
+  the gate off. Exposes the configured policy as `Session#plan_mode_policy`.
+
 ## [0.40.30] — 2026-09-23
 
 ### Added

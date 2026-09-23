@@ -254,6 +254,57 @@ module Ask
         assert_includes session.instance_variable_get(:@tools).map(&:name), "exit_plan_mode"
       end
 
+      def test_plan_mode_builds_plan_mode_policy_with_allowed_tools
+        session = build_session(
+          plan_mode: { read_only_tools: %w[plan_read] },
+          tools: [PlanWriteTool.new, PlanReadTool.new]
+        )
+
+        policy = session.plan_mode_policy
+        assert_instance_of Ask::Permissions::PlanModePolicy, policy
+        assert_equal :proceed, policy.before_tool_call(tool_call("t1", "plan_read"))[:action]
+        assert_equal :proceed, policy.before_tool_call(tool_call("t2", "exit_plan_mode"))[:action]
+        assert_equal :block, policy.before_tool_call(tool_call("t3", "plan_write"))[:action]
+      end
+
+      def test_plan_mode_gate_matches_policy_decisions
+        session = build_session(
+          plan_mode: { read_only_tools: %w[plan_read] },
+          tools: [PlanWriteTool.new, PlanReadTool.new]
+        )
+        policy = session.plan_mode_policy
+
+        %w[plan_read exit_plan_mode plan_write].each do |name|
+          call = tool_call("t1", name)
+          assert_equal policy.before_tool_call(call, {}), session.plan_mode_gate(call, {})
+        end
+      end
+
+      def test_plan_mode_gate_allows_default_read_only_tools
+        session = build_session(plan_mode: true, tools: [])
+
+        %w[read glob grep web_search exit_plan_mode].each do |name|
+          assert_equal :proceed, session.plan_mode_gate(tool_call("t1", name), {})[:action],
+            "expected #{name} to proceed"
+        end
+        assert_equal :block, session.plan_mode_gate(tool_call("t2", "bash"), {})[:action]
+        assert_equal "Plan mode: only read-only tools until the plan is approved",
+          session.plan_mode_gate(tool_call("t3", "bash"), {})[:reason]
+      end
+
+      def test_plan_gate_hook_installed_only_in_plan_mode
+        gated = build_session(plan_mode: true, tools: [])
+        plain = build_session(tools: [])
+        call = tool_call("t1", "bash")
+
+        gated_hooks = gated.instance_variable_get(:@hooks)
+        plain_hooks = plain.instance_variable_get(:@hooks)
+
+        assert_equal :block, gated_hooks.run_before_tool(call, {})[:action]
+        assert_nil plain_hooks.run_before_tool(call, {})
+        assert_nil plain.instance_variable_get(:@plan_mode_policy)
+      end
+
       def test_plan_mode_blocks_mutating_tools_and_allows_read_only
         chat = TurnChat.new(
           ResponseMessage.new(content: "", tool_calls: {

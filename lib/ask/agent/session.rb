@@ -201,7 +201,13 @@ module Ask
 
         # Plan gate runs before user hooks and the approval policy: in plan
         # mode, non-read-only tools are blocked outright (never queued).
+        # The allowed-tool decision lives in one shared PlanModePolicy;
+        # its #before_tool_call is hooked in only while plan mode is on.
         if @plan_mode
+          @plan_mode_policy = Ask::Permissions::PlanModePolicy.new(
+            allowed_tools: @plan_mode_read_only_tools,
+            exit_tool: "exit_plan_mode"
+          )
           @hooks = Hooks.new(
             before_tool: [method(:plan_mode_gate)] + Array(@hooks.instance_variable_get(:@before_tool)),
             after_tool: @hooks.instance_variable_get(:@after_tool)
@@ -275,6 +281,10 @@ module Ask
       # @return [Ask::Permissions::ApprovalQueue, nil] queue carrying plan
       #   approvals (only when plan mode is enabled)
       attr_reader :plan_queue
+      # @return [Ask::Permissions::PlanModePolicy, nil] the shared policy
+      #   deciding which tools may run in plan mode (only when plan mode
+      #   is enabled)
+      attr_reader :plan_mode_policy
       # @return [Ask::Agent::TodoList, nil] session task list (only when
       #   todos are enabled)
       attr_reader :todo_list
@@ -701,13 +711,13 @@ end
       #   phase; non-read-only tools are blocked until the plan is approved)
       def plan_mode? = @plan_mode
 
-      # Before-tool gate active while in plan mode: only read-only tools
-      # (and exit_plan_mode itself) run until a human approves the plan.
-      def plan_mode_gate(tool_call, _context)
+      # Before-tool gate active while in plan mode: delegates the
+      # allowed-tool decision to the PlanModePolicy (read-only tools and
+      # exit_plan_mode itself) and proceeds once a human approves the plan.
+      def plan_mode_gate(tool_call, context)
         return { action: :proceed } unless @plan_mode
-        return { action: :proceed } if @plan_mode_read_only_tools.include?(tool_call.name) || tool_call.name == "exit_plan_mode"
 
-        { action: :block, reason: "Plan mode: only read-only tools until the plan is approved" }
+        @plan_mode_policy.before_tool_call(tool_call, context)
       end
 
       def approve_plan(action)
