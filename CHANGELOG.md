@@ -9,6 +9,11 @@
 - Applying approval with `scope: :session` grants that tool for the session;
   once/project approvals remain one-shot from Ask Agent's perspective. Grants
   persist and restore with both `Session.load` and `SessionAdapter.resume`.
+- `approval: { mode: ... }` — the permission mode (`:full_access`,
+  `:ask_before_changes`, `:read_only`) is forwarded to
+  `Ask::Permissions::ApprovalPolicy` when `Session#build_approval` wires the
+  policy, so sessions can run under a baseline mode alongside
+  `require_approval:` / `rules:` / grants.
 
 ### Fixed
 
@@ -37,7 +42,12 @@
   hand-rolling the allow/block check in `plan_mode_gate`, which now only
   checks that plan mode is still active and delegates. The gate hook is
   still installed only when plan mode is enabled, and approval still turns
-  the gate off. Exposes the configured policy as `Session#plan_mode_policy`.
+  the   gate off. Exposes the configured policy as `Session#plan_mode_policy`.
+- Unknown keys in the `approval:` hash now raise `ArgumentError` instead of
+  being silently dropped — a misspelled option previously disabled a safety
+  control with no signal. Accepted keys are unchanged: `queue:`,
+  `require_approval:`, `rules:`, `auto_approve:`, `session_grants:`,
+  `project_grants:`, and the new `mode:`.
 
 ## [0.40.30] — 2026-09-23
 

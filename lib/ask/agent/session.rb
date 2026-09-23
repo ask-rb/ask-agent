@@ -10,6 +10,12 @@ module Ask
       # loop registrations resurrecting ghost pending calls.
       RECENTLY_COMPLETED_MAX = 200
 
+      # Options accepted by the `approval:` hash. Unknown keys raise so a
+      # misspelled option can never silently disable a safety control.
+      APPROVAL_OPTIONS = %i[
+        queue require_approval rules auto_approve session_grants project_grants mode
+      ].freeze
+
       attr_reader :id, :chat, :tools, :turn_count, :created_at, :messages
       attr_reader :tool_calls_made, :total_input_tokens, :total_output_tokens, :total_cost
 
@@ -920,9 +926,15 @@ end
       #
       # `approval` accepts:
       #   - true            → queue with defaults
-      #   - a Hash          → { require_approval:, auto_approve: } for the policy
+      #   - a Hash          → { require_approval:, auto_approve:, rules:,
+      #                         mode:, queue:, session_grants:,
+      #                         project_grants: } — unknown keys raise
       #   - an ApprovalQueue → uses it, with policy options from
       #                        approval[:policy] if given
+      #
+      # `mode:` forwards to Ask::Permissions::ApprovalPolicy — one of
+      # :full_access, :ask_before_changes, :read_only (nil = declaration-
+      # driven defaults).
       #
       # When enabled, an ApprovalPolicy hook is prepended to the session's
       # before_tool hooks so approval-required tools queue instead of running.
@@ -930,6 +942,12 @@ end
         return nil unless approval
 
         policy_opts = approval.is_a?(Hash) ? approval : {}
+
+        unknown = policy_opts.keys - APPROVAL_OPTIONS
+        unless unknown.empty?
+          label = unknown.size == 1 ? "option" : "options"
+          raise ArgumentError, "unknown approval #{label}: #{unknown.map(&:inspect).join(", ")}"
+        end
 
         queue = if approval.is_a?(Ask::Permissions::ApprovalQueue)
           approval
@@ -980,7 +998,8 @@ end
           rules: policy_opts[:rules],
           tools: @tools,
           session_grants: @session_grants,
-          project_grants: @project_grants
+          project_grants: @project_grants,
+          mode: policy_opts[:mode]
         )
         @approval_policy = policy
 

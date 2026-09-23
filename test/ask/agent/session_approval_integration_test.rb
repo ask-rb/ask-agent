@@ -115,6 +115,65 @@ class SessionApprovalIntegrationTest < Minitest::Test
     assert_same queue, s.approval_queue
   end
 
+  # --- Permission modes ---
+
+  def test_valid_modes_pass_through_to_policy
+    Ask::Agent::Chat.stubs(:new).returns(build_chat_stub)
+    %i[full_access ask_before_changes read_only].each do |mode|
+      s = Ask::Agent::Session.new(model: "gpt-4o", tools: [], approval: { mode: mode })
+      assert_equal mode, s.approval_policy.mode, "mode #{mode} must reach the approval policy"
+    end
+  end
+
+  def test_invalid_mode_raises
+    Ask::Agent::Chat.stubs(:new).returns(build_chat_stub)
+    error = assert_raises(ArgumentError) do
+      Ask::Agent::Session.new(model: "gpt-4o", tools: [], approval: { mode: :invalid_mode })
+    end
+    assert_match(/invalid_mode/, error.message)
+  end
+
+  def test_unknown_approval_option_raises
+    Ask::Agent::Chat.stubs(:new).returns(build_chat_stub)
+    error = assert_raises(ArgumentError) do
+      Ask::Agent::Session.new(model: "gpt-4o", tools: [], approval: { bogus_option: true })
+    end
+    assert_match(/bogus_option/, error.message)
+  end
+
+  def test_read_only_mode_blocks_tool_end_to_end
+    chat = build_chat_stub(sequence: [
+      { tool_calls: { "call_1" => stub_tool_call(name: "safe", arguments: "{}") } }
+    ])
+    Ask::Agent::Chat.stubs(:new).returns(chat)
+
+    s = Ask::Agent::Session.new(
+      model: "gpt-4o", tools: [SafeTool.new],
+      approval: { mode: :read_only }
+    )
+
+    assert_equal :read_only, s.approval_policy.mode
+
+    response = s.run("Do safe thing")
+
+    # read_only refuses the change outright: no queue entry, no execution.
+    assert_equal "", response
+    assert_empty s.approval_queue.pending_actions
+    refute s.pending_tools?
+  end
+
+  def test_mode_combines_with_existing_options
+    Ask::Agent::Chat.stubs(:new).returns(build_chat_stub)
+    rules = Ask::Permissions::PermissionRules.new { allow :email }
+    s = Ask::Agent::Session.new(
+      model: "gpt-4o", tools: [EmailTool.new],
+      approval: { mode: :ask_before_changes, require_approval: ["some_tool"],
+                  auto_approve: { "other" => true }, rules: rules }
+    )
+    assert_equal :ask_before_changes, s.approval_policy.mode
+    assert_instance_of Ask::Permissions::ApprovalQueue, s.approval_queue
+  end
+
   # --- End-to-end: approval-required tool is queued, not executed ---
 
   def test_approval_required_tool_is_queued_not_executed

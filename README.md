@@ -120,6 +120,35 @@ under multiple OpenAI-compatible providers). A `provider:` passed to
 `Session.new` or declared in an agent `Definition` always wins over the global
 default.
 
+### Tool approval
+
+`Session.new(approval: ...)` turns on human-in-the-loop approval: matching
+tool calls queue on `session.approval_queue` instead of executing until
+`approve(id)` / `reject(id)` is called. `approval: true` enables defaults; a
+Hash accepts:
+
+| Option | Purpose |
+|---|---|
+| `require_approval:` | tool names / regexps / `:all` that must be approved |
+| `auto_approve:` | user-enabled rules keyed by tool name (pairs with `auto_approvable` tools) |
+| `rules:` | an `Ask::Permissions::PermissionRules` block (`allow` / `ask` / `deny`) |
+| `mode:` | baseline policy — `:full_access`, `:ask_before_changes`, or `:read_only` |
+| `queue:` | a custom `Ask::Permissions::ApprovalQueue` |
+| `session_grants:` / `project_grants:` | grant collaborators (session- and project-scoped approvals) |
+
+```ruby
+session = Ask::Agent::Session.new(
+  model: "gpt-4o",
+  tools: [SendEmail],
+  approval: { mode: :read_only }
+)
+```
+
+`mode:` is forwarded to `Ask::Permissions::ApprovalPolicy`: `:full_access`
+runs every tool without asking, `:ask_before_changes` queues tool calls for
+approval, and `:read_only` refuses them outright. Unknown keys in the
+`approval:` hash raise `ArgumentError` instead of being silently ignored.
+
 ## Durable sessions (ask-session)
 
 `Ask::Agent::SessionAdapter` bridges a session to an event-sourced
