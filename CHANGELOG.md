@@ -1,5 +1,24 @@
 ## [Unreleased]
 
+### Fixed
+
+- **Approval / plan queue persistence restores without re-emitting and approves exactly once.**
+  `Session.persist!` stores JSON-safe queue snapshots (`approvals:`,
+  `plan_approvals:`); `Session.load` re-enables the queues only when the
+  blob carries pending actions and silently rebuilds pending-tool
+  registrations so a later approve/reject completes the original call once.
+  `SessionAdapter` snapshots carry the same state and resume restores it
+  without firing callbacks. Malformed snapshots (non-Hash, missing /
+  non-Array pendings, missing queue while pendings exist, non-empty target,
+  or `restore_pending` / `snapshot` failures) now raise a contextual
+  `Ask::Agent::Error` / `SessionAdapter::Error` instead of being silently
+  swallowed; nil snapshots and empty pending lists remain safe no-ops, and
+  queues predating the Permissions API persist as nil (documented
+  compatibility fallback that cannot strand actions). Framework-injected
+  tools (`load_skill`, `todo_write`, `exit_plan_mode`, memory tools,
+  `output_read`) are excluded from persisted tool lists, avoiding
+  `Session.load` reconstruction warnings.
+
 ### Changed
 
 - **Plan-mode tool gate delegates to `Ask::Permissions::PlanModePolicy`.**

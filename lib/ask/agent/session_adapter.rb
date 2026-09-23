@@ -94,6 +94,11 @@ module Ask
           )
         end
         agent.instance_variable_set(:@messages, agent.chat.messages.dup)
+        restore_persisted_approvals(
+          agent,
+          payload[:approvals] || payload["approvals"],
+          payload[:plan_approvals] || payload["plan_approvals"]
+        )
 
         new(agent: agent, host: host, session_id: session_id, create: false)
       end
@@ -238,8 +243,90 @@ module Ask
       def build_snapshot
         {
           messages: (@agent.messages || []).map(&:to_h),
-          turn_count: @agent.turn_count || 0
+          turn_count: @agent.turn_count || 0,
+          # Durable permission state: JSON-safe v1 queue snapshots when the
+          # agent exposes a queue supporting the shared Permissions API.
+          # Nil when approval is off or unsupported (compatibility fallback
+          # — nothing durable to persist, so nothing to strand). Snapshot
+          # failures raise SessionAdapter::Error with queue context.
+          approvals: self.class.queue_snapshot_for(@agent, :approval_queue),
+          plan_approvals: self.class.queue_snapshot_for(@agent, :plan_queue)
         }
+      end
+
+      def self.queue_snapshot_for(agent, queue_name)
+        return nil unless agent.respond_to?(queue_name)
+
+        queue = agent.public_send(queue_name)
+        return nil unless queue
+        return nil unless queue.respond_to?(:snapshot)
+
+        begin
+          queue.snapshot
+        rescue StandardError => e
+          raise Error, "Failed to snapshot #{queue_name} queue (#{queue.class}): #{e.class}: #{e.message}"
+        end
+      end
+
+      # Restore persisted queue snapshots into the agent without firing
+      # callbacks or emitting approval-required events. For real Sessions
+      # this delegates to the session's silent restore (which also rebuilds
+      # pending-tool registrations so approve/reject completes exactly
+      # once); for generic agents it restores directly when the surface
+      # allows.
+      #
+      # Compatibility fallback (cannot strand): nil snapshots and empty
+      # pending_actions lists are safe no-ops. Any other unrestorable state
+      # — non-Hash snapshot, missing/non-Array pendings, missing queue or
+      # queue without restore support while pendings exist, a non-empty
+      # target queue, or a restore_pending failure — raises
+      # SessionAdapter::Error (or Ask::Agent::Error from the session
+      # delegate) with queue context instead of silently dropping actions.
+      def self.restore_persisted_approvals(agent, approvals_snapshot, plan_snapshot)
+        if agent.respond_to?(:restore_persisted_approvals, true)
+          agent.send(:restore_persisted_approvals, approvals_snapshot, plan_snapshot)
+          return
+        end
+
+        { approval_queue: approvals_snapshot, plan_queue: plan_snapshot }.each do |queue_name, snapshot|
+          restore_into_generic_queue(agent, queue_name, snapshot)
+        end
+      end
+
+      def self.restore_into_generic_queue(agent, queue_name, snapshot)
+        return nil if snapshot.nil?
+
+        unless snapshot.is_a?(Hash)
+          raise Error, "Cannot restore #{queue_name} queue: snapshot must be a Hash, got #{snapshot.class}"
+        end
+
+        pendings = snapshot[:pending_actions] || snapshot["pending_actions"]
+        if pendings.nil?
+          raise Error, "Cannot restore #{queue_name} queue: snapshot missing pending_actions"
+        end
+        unless pendings.is_a?(Array)
+          raise Error, "Cannot restore #{queue_name} queue: pending_actions must be an Array, got #{pendings.class}"
+        end
+        return nil if pendings.empty?
+        return nil unless agent.respond_to?(queue_name)
+
+        queue = agent.public_send(queue_name)
+        unless queue
+          raise Error, "Cannot restore #{queue_name} queue: agent has no #{queue_name} queue but snapshot carries #{pendings.size} pending action(s)"
+        end
+        unless queue.respond_to?(:restore_pending) && queue.respond_to?(:pending_actions)
+          raise Error, "Cannot restore #{queue_name} queue: #{queue.class} does not support restore_pending"
+        end
+        if queue.respond_to?(:any_pending?) && queue.any_pending?
+          raise Error, "Cannot restore #{queue_name} queue: target queue already holds pending actions"
+        end
+
+        begin
+          queue.restore_pending(snapshot)
+        rescue StandardError => e
+          raise Error, "Cannot restore #{queue_name} queue: #{e.class}: #{e.message}"
+        end
+        nil
       end
 
       def self.deserialize_content(content)

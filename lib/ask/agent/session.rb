@@ -522,6 +522,9 @@ module Ask
 
         data = deep_symbolize_keys(data)
 
+        approvals_snapshot = data[:approvals]
+        plan_snapshot = data[:plan_approvals]
+
         session = new(
           id: data[:id],
           model: data.dig(:metadata, :model),
@@ -541,9 +544,14 @@ module Ask
           state: adapter,
           # Checkpointing is restored automatically when the session has
           # checkpoints in the store; todos likewise when the snapshot has
-          # a task list.
+          # a task list. Approval / plan queues are re-enabled only when the
+          # persisted blob carries pending actions — policy config (rules,
+          # require_approval lists) is not persisted, only queue state that
+          # the shared Permissions API supports.
           checkpoints: !adapter.get("#{id}#{CheckpointStore::HEAD_KEY}").nil?,
-          todos: !data[:todos].nil?
+          todos: !data[:todos].nil?,
+          approval: approval_snapshot_pending?(approvals_snapshot) ? true : nil,
+          plan_mode: approval_snapshot_pending?(plan_snapshot) ? true : false
         )
 
         data[:messages].each do |msg|
@@ -554,7 +562,8 @@ module Ask
           )
         end
         session.instance_variable_get(:@todo_list)&.restore(data[:todos])
-	
+        session.send(:restore_persisted_approvals, approvals_snapshot, plan_snapshot)
+
 	        session.instance_variable_set(:@messages, session.chat.messages.dup)
 	        session
       end
@@ -1108,15 +1117,115 @@ end
         target.instance_variable_set(:@messages, target.chat.messages.dup)
         target.instance_variable_set(:@turn_count, data.dig(:metadata, :turn_count) || 0)
         target.instance_variable_get(:@todo_list)&.restore(data[:todos])
+        # Approval restore for checkpoint rollback/fork: silent (never emits)
+        # but loud on malformed state — restore_persisted_approvals raises
+        # Ask::Agent::Error instead of stranding pending actions.
+        target.send(:restore_persisted_approvals, data[:approvals], data[:plan_approvals])
       end
 
       # User-supplied tools only. Framework-injected tools (the built-in
-      # load_skill tool) are re-created by resolve_tools on every session, so
+      # load_skill tool, todo_write, exit_plan_mode, memory tools,
+      # output_read) are re-created by resolve_tools on every session, so
       # persisting them would leak framework internals into user data — and
-      # they cannot be auto-instantiated on load anyway (LoadSkillTool needs
-      # a registry).
+      # they cannot always be auto-instantiated on load anyway (LoadSkillTool
+      # needs a registry, ExitPlanMode needs a plan_queue).
       def persisted_tools
-        @tools.reject { |t| t.is_a?(Ask::Skills::LoadSkillTool) }
+        @tools.reject do |t|
+          t.is_a?(Ask::Skills::LoadSkillTool) ||
+            (defined?(TodoWrite) && t.is_a?(TodoWrite)) ||
+            (defined?(ExitPlanMode) && t.is_a?(ExitPlanMode)) ||
+            (defined?(MemoryWrite) && t.is_a?(MemoryWrite)) ||
+            (defined?(MemorySearch) && t.is_a?(MemorySearch)) ||
+            (defined?(OutputRead) && t.is_a?(OutputRead))
+        end
+      end
+
+      # JSON-safe v1 snapshot for a queue, or nil when there is no queue or
+      # it predates the shared Permissions API (compatibility fallback:
+      # nothing durable to persist, so nothing to restore — cannot strand
+      # pendings because an unsupported queue never contributed durable
+      # state). Raises Ask::Agent::Error with context when the queue
+      # supports the API but snapshotting fails.
+      def queue_snapshot_for(queue, queue_name = "approval")
+        return nil unless queue
+        return nil unless queue.respond_to?(:snapshot)
+
+        begin
+          queue.snapshot
+        rescue StandardError => e
+          raise Ask::Agent::Error, "Failed to snapshot #{queue_name} queue (#{queue.class}): #{e.class}: #{e.message}"
+        end
+      end
+
+      # Restore persisted queue snapshots into this session's queues without
+      # firing callbacks or emitting events. Pending-tool registrations are
+      # rebuilt silently so a later approve/reject still completes the
+      # original tool call exactly once.
+      #
+      # Compatibility fallback (cannot strand): a nil snapshot (approval off
+      # or unsupported queue) and an empty pending_actions list are safe
+      # no-ops. Any other state that would prevent a faithful restore —
+      # non-Hash snapshot, missing/non-Array pendings, missing queue or
+      # queue without restore support while pendings exist, a non-empty
+      # target queue, or a restore_pending failure — raises
+      # Ask::Agent::Error with queue context instead of silently dropping
+      # pending actions.
+      def restore_persisted_approvals(approvals_snapshot, plan_snapshot)
+        restore_queue_snapshot(@approval_queue, approvals_snapshot, "approval")
+        restore_queue_snapshot(@plan_queue, plan_snapshot, "plan")
+        nil
+      end
+
+      def restore_queue_snapshot(queue, snapshot, queue_name = "approval")
+        return nil if snapshot.nil?
+
+        unless snapshot.is_a?(Hash)
+          raise Ask::Agent::Error, "Cannot restore #{queue_name} queue: snapshot must be a Hash, got #{snapshot.class}"
+        end
+
+        pendings = snapshot[:pending_actions] || snapshot["pending_actions"]
+        if pendings.nil?
+          raise Ask::Agent::Error, "Cannot restore #{queue_name} queue: snapshot missing pending_actions"
+        end
+        unless pendings.is_a?(Array)
+          raise Ask::Agent::Error, "Cannot restore #{queue_name} queue: pending_actions must be an Array, got #{pendings.class}"
+        end
+        return nil if pendings.empty?
+
+        unless queue
+          raise Ask::Agent::Error, "Cannot restore #{queue_name} queue: session has no #{queue_name} queue but snapshot carries #{pendings.size} pending action(s)"
+        end
+        unless queue.respond_to?(:restore_pending) && queue.respond_to?(:pending_actions)
+          raise Ask::Agent::Error, "Cannot restore #{queue_name} queue: #{queue.class} does not support restore_pending"
+        end
+
+        # restore_pending requires an empty queue — a non-empty target means
+        # a second restore would duplicate or strand actions, so fail loudly
+        # instead of silently dropping either side.
+        if queue.respond_to?(:any_pending?) && queue.any_pending?
+          raise Ask::Agent::Error, "Cannot restore #{queue_name} queue: target queue already holds pending actions"
+        end
+
+        begin
+          queue.restore_pending(snapshot)
+        rescue StandardError => e
+          raise Ask::Agent::Error, "Cannot restore #{queue_name} queue: #{e.class}: #{e.message}"
+        end
+        queue.pending_actions.each do |action|
+          tool_call_id = action.tool_call_id
+          next unless tool_call_id
+
+          @pending_mutex.synchronize do
+            @pending_tools[tool_call_id] ||= {
+              tool_name: action.tool_name,
+              message: action.message || "Pending approval",
+              status: "pending",
+              tool_call_id: tool_call_id,
+              action_id: action.id
+            }
+          end
+        end
+        nil
       end
 
       # Persist content blocks as their +to_h+ hashes so attachments
@@ -1144,6 +1253,13 @@ end
             }
           },
           todos: @todo_list&.to_h,
+          # Durable permission state: JSON-safe v1 queue snapshots when the
+          # queue supports the shared Permissions API (#snapshot). Nil when
+          # approval is off or the queue predates the API (compatibility
+          # fallback — nothing durable to persist, so nothing to strand).
+          # Snapshot failures raise Ask::Agent::Error with queue context.
+          approvals: queue_snapshot_for(@approval_queue, "approval"),
+          plan_approvals: queue_snapshot_for(@plan_queue, "plan"),
           metadata: {
             model: @chat.model.respond_to?(:id) ? @chat.model.id : @chat.model,
             tools: persisted_tools.map { |t| t.class.name },
@@ -1253,6 +1369,16 @@ end
         else
           obj
         end
+      end
+
+      # True when a persisted approval snapshot carries at least one pending
+      # action. Used to decide whether Session.load should re-enable the
+      # approval / plan queue — policy config itself is never persisted.
+      def self.approval_snapshot_pending?(snapshot)
+        return false unless snapshot.is_a?(Hash)
+
+        pendings = snapshot[:pending_actions] || snapshot["pending_actions"]
+        pendings.is_a?(Array) && !pendings.empty?
       end
 
       # Render the system context and apply it to the chat.
