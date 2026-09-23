@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+### Added
+
+- Applying approval with `scope: :session` grants that tool for the session;
+  once/project approvals remain one-shot from Ask Agent's perspective. Grants
+  persist and restore with both `Session.load` and `SessionAdapter.resume`.
+
 ### Fixed
 
 - **Approval / plan queue persistence restores without re-emitting and approves exactly once.**

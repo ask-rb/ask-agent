@@ -75,6 +75,33 @@ module Ask
         assert_equal "call_1", payload[:approvals][:pending_actions].first[:tool_call_id]
       end
 
+      def test_session_grants_are_persisted_and_restored_without_pending_actions
+        store = HashAdapter.new
+        session = new_session(store: store)
+        session.session_grants.grant("counting")
+        session.send(:persist!)
+
+        payload = store.get(session.id)
+        assert_equal({ version: 1, granted_tools: ["counting"] }, payload[:session_grants])
+
+        restored = Session.load(session.id, adapter: store)
+        assert restored.session_grants.granted?("counting")
+        assert_same restored.session_grants, restored.approval_policy.session_grants
+        assert_empty restored.approval_queue.pending_actions
+      end
+
+      def test_malformed_session_grant_snapshot_raises_contextual_error
+        store = HashAdapter.new
+        session = new_session(store: store)
+        session.send(:persist!)
+        data = store.get(session.id)
+        data[:session_grants] = { version: 1, granted_tools: "counting" }
+        store.set(session.id, data)
+
+        error = assert_raises(Ask::Agent::Error) { Session.load(session.id, adapter: store) }
+        assert_match(/session grants.*granted_tools/i, error.message)
+      end
+
       def test_load_restores_pending_without_reemitting_and_approves_once
         CountingTool.reset!
         store = HashAdapter.new

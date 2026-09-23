@@ -81,6 +81,7 @@ module Ask
                      reflector: nil, telemetry: true, meta_agent: nil,
                      agent_dir: nil, evaluator: nil, audit_log: nil,
                      skills_disclosure: true, approval: nil,
+                     session_grants: nil,
                      tool_call_repair: nil, checkpoints: false,
                      todos: false, plan_mode: false, memory: nil,
                      memory_learning: false, offload_large_outputs: false,
@@ -88,6 +89,9 @@ module Ask
                      **chat_options)
         @id = id || SecureRandom.uuid
         @agent_dir = agent_dir
+        @provided_session_grants = session_grants
+        @session_grants = nil
+        @approval_policy = nil
         @max_turns = max_turns
         @max_tool_retries = max_tool_retries
         @parallel_tools = parallel_tools
@@ -297,6 +301,7 @@ module Ask
       # @return [Ask::Agent::ArtifactStore, nil] store for tool deliverables
       #   (only when the +artifacts:+ option is enabled)
       attr_reader :artifact_store
+      attr_reader :session_grants, :approval_policy
 
       def run(message, tools: nil, reset: true, attachments: nil, runtime_event_sink: nil)
         raise "Session deleted" if @deleted
@@ -524,6 +529,7 @@ module Ask
 
         approvals_snapshot = data[:approvals]
         plan_snapshot = data[:plan_approvals]
+        grants_snapshot = data[:session_grants]
 
         session = new(
           id: data[:id],
@@ -550,7 +556,7 @@ module Ask
           # the shared Permissions API supports.
           checkpoints: !adapter.get("#{id}#{CheckpointStore::HEAD_KEY}").nil?,
           todos: !data[:todos].nil?,
-          approval: approval_snapshot_pending?(approvals_snapshot) ? true : nil,
+          approval: (approval_snapshot_pending?(approvals_snapshot) || grants_snapshot_present?(grants_snapshot)) ? true : nil,
           plan_mode: approval_snapshot_pending?(plan_snapshot) ? true : false
         )
 
@@ -562,7 +568,7 @@ module Ask
           )
         end
         session.instance_variable_get(:@todo_list)&.restore(data[:todos])
-        session.send(:restore_persisted_approvals, approvals_snapshot, plan_snapshot)
+        session.send(:restore_persisted_approvals, approvals_snapshot, plan_snapshot, grants_snapshot)
 
 	        session.instance_variable_set(:@messages, session.chat.messages.dup)
 	        session
@@ -652,7 +658,8 @@ module Ask
           state: @state,
           checkpoints: true,
           todos: @todos_enabled,
-          plan_mode: @plan_mode
+          plan_mode: @plan_mode,
+          approval: (@approval_queue || self.class.grants_snapshot_present?(data[:session_grants])) ? true : nil
         )
         restore_into(forked, data)
         emit(Events::SessionForked.new(session_id: @id, forked_id: forked_id, seq: seq))
@@ -935,10 +942,19 @@ end
           )
         end
 
-        # Custom queues (subclasses, event-emitting wrappers) may come
-        # without callbacks — wire the session's defaults so approvals
-        # actually execute the tool call.
-        queue.on_approve ||= ->(action) { apply_approved_action(action) }
+        custom_grants = @provided_session_grants || policy_opts[:session_grants]
+        unless custom_grants.nil? || custom_grants.is_a?(Ask::Permissions::SessionPermissionGrants)
+          raise ArgumentError, "session_grants must be an Ask::Permissions::SessionPermissionGrants, got #{custom_grants.class}"
+        end
+        @session_grants = custom_grants || Ask::Permissions::SessionPermissionGrants.new
+
+        # Preserve a custom queue callback, but grant session scope before it
+        # executes. If no callback is supplied, keep the default executor.
+        previous_approve = queue.on_approve
+        queue.on_approve = lambda do |action|
+          grant_session_scope(action)
+          previous_approve ? previous_approve.call(action) : apply_approved_action(action)
+        end
         queue.on_reject ||= ->(action) { reject_pending_action(action) }
         # Register the pending tool call the moment the action is queued —
         # before the auto-approval drain — so completions always match even
@@ -957,8 +973,10 @@ end
           queue: queue,
           require_approval: policy_opts[:require_approval],
           rules: policy_opts[:rules],
-          tools: @tools
+          tools: @tools,
+          session_grants: @session_grants
         )
+        @approval_policy = policy
 
         # Prepend the approval gate so it runs before user hooks
         @hooks = Hooks.new(
@@ -1006,6 +1024,13 @@ end
             }
           )
         end
+      end
+
+      def grant_session_scope(action)
+        return unless action.respond_to?(:resolution_scope) && action.resolution_scope == :session
+        return unless action.tool_name && @session_grants
+
+        @session_grants.grant(action.tool_name.to_s)
       end
 
       # Notify the conversation that an action was rejected by the user.
@@ -1117,10 +1142,9 @@ end
         target.instance_variable_set(:@messages, target.chat.messages.dup)
         target.instance_variable_set(:@turn_count, data.dig(:metadata, :turn_count) || 0)
         target.instance_variable_get(:@todo_list)&.restore(data[:todos])
-        # Approval restore for checkpoint rollback/fork: silent (never emits)
-        # but loud on malformed state — restore_persisted_approvals raises
-        # Ask::Agent::Error instead of stranding pending actions.
-        target.send(:restore_persisted_approvals, data[:approvals], data[:plan_approvals])
+        # Approval + grant restore for checkpoint rollback/fork is silent,
+        # but malformed permission snapshots raise instead of being stranded.
+        target.send(:restore_persisted_approvals, data[:approvals], data[:plan_approvals], data[:session_grants])
       end
 
       # User-supplied tools only. Framework-injected tools (the built-in
@@ -1170,10 +1194,29 @@ end
       # target queue, or a restore_pending failure — raises
       # Ask::Agent::Error with queue context instead of silently dropping
       # pending actions.
-      def restore_persisted_approvals(approvals_snapshot, plan_snapshot)
+      def restore_persisted_approvals(approvals_snapshot, plan_snapshot, grants_snapshot = nil)
         restore_queue_snapshot(@approval_queue, approvals_snapshot, "approval")
         restore_queue_snapshot(@plan_queue, plan_snapshot, "plan")
+        restore_grants_snapshot(@session_grants, grants_snapshot)
         nil
+      end
+
+      def restore_grants_snapshot(grants, snapshot)
+        return if snapshot.nil?
+        raise Ask::Agent::Error, "Cannot restore session grants: snapshot must be a Hash" unless snapshot.is_a?(Hash)
+
+        tools = snapshot[:granted_tools] || snapshot["granted_tools"]
+        unless tools.is_a?(Array) && tools.all? { |tool| tool.is_a?(String) && !tool.empty? }
+          raise Ask::Agent::Error, "Cannot restore session grants: granted_tools must be an Array of non-empty Strings"
+        end
+        return if tools.empty?
+        raise Ask::Agent::Error, "Cannot restore session grants: session has no grants store" unless grants
+
+        begin
+          grants.restore_snapshot(snapshot)
+        rescue StandardError => e
+          raise Ask::Agent::Error, "Cannot restore session grants: #{e.class}: #{e.message}"
+        end
       end
 
       def restore_queue_snapshot(queue, snapshot, queue_name = "approval")
@@ -1260,6 +1303,7 @@ end
           # Snapshot failures raise Ask::Agent::Error with queue context.
           approvals: queue_snapshot_for(@approval_queue, "approval"),
           plan_approvals: queue_snapshot_for(@plan_queue, "plan"),
+          session_grants: @session_grants&.snapshot,
           metadata: {
             model: @chat.model.respond_to?(:id) ? @chat.model.id : @chat.model,
             tools: persisted_tools.map { |t| t.class.name },
@@ -1379,6 +1423,12 @@ end
 
         pendings = snapshot[:pending_actions] || snapshot["pending_actions"]
         pendings.is_a?(Array) && !pendings.empty?
+      end
+
+      def self.grants_snapshot_present?(snapshot)
+        return false unless snapshot.is_a?(Hash)
+        tools = snapshot[:granted_tools] || snapshot["granted_tools"]
+        tools.is_a?(Array) && !tools.empty?
       end
 
       # Render the system context and apply it to the chat.

@@ -402,6 +402,22 @@ class SessionAdapterTest < Minitest::Test
     assert_operator snapshots.size, :>=, 2, "each run appends a new snapshot"
   end
 
+  def test_real_session_snapshot_restores_session_permission_grants
+    host = Ask::Session::Host.new(store: Ask::Session::Store.new)
+    session1 = Ask::Agent::Session.new(model: ProviderChat.new, tools: [], approval: true, id: "grant-session")
+    session1.session_grants.grant("bash")
+    adapter = Ask::Agent::SessionAdapter.create(agent: session1, host: host)
+    adapter.run("hello world")
+
+    snapshot = host.events("grant-session").find { |event| event.type == "agent.snapshot" }
+    assert_equal ["bash"], snapshot.payload[:session_grants][:granted_tools]
+
+    session2 = Ask::Agent::Session.new(model: ProviderChat.new, tools: [], approval: true, id: "grant-session")
+    Ask::Agent::SessionAdapter.resume(agent: session2, host: host, session_id: "grant-session")
+
+    assert session2.session_grants.granted?("bash")
+  end
+
   # --- snapshot payload compatibility ---
 
   def test_resume_accepts_string_keyed_snapshot_payload

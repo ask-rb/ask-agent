@@ -410,4 +410,67 @@ class SessionApprovalIntegrationTest < Minitest::Test
 
     refute s.pending_tools?, "late registration must not resurrect a completed call"
   end
+
+  def test_session_scope_grants_whole_tool_but_once_scope_does_not
+    chat = build_chat_stub(sequence: [
+      { tool_calls: { "call_1" => stub_tool_call(name: "email", arguments: '{"to":"x@y.com","body":"hi"}') } },
+      { content: "done" }
+    ])
+    Ask::Agent::Chat.stubs(:new).returns(chat)
+
+    session = Ask::Agent::Session.new(
+      model: "gpt-4o", tools: [EmailTool.new], approval: { auto_approve: {} }
+    )
+    completed = []
+    session.on(Ask::Agent::Events::ToolCompleted) { |event| completed << event }
+    session.run("Send an email to x")
+    action = session.approval_queue.pending_actions.first
+    refute_nil action
+    refute session.session_grants.granted?("email")
+
+    session.approval_queue.approve(action.id, scope: :session)
+
+    grants = session.session_grants
+    assert grants.granted?("email")
+    assert_same grants, session.approval_policy.session_grants
+    assert_equal 1, completed.size
+  end
+
+  def test_session_grant_bypasses_queue_on_later_tool_call
+    chat = build_chat_stub(sequence: [
+      { tool_calls: { "call_1" => stub_tool_call(name: "email", arguments: '{"to":"x@y.com","body":"first"}') } },
+      { content: "done" }
+    ])
+    Ask::Agent::Chat.stubs(:new).returns(chat)
+    session = Ask::Agent::Session.new(
+      model: "gpt-4o", tools: [EmailTool.new], approval: { auto_approve: {} }
+    )
+    session.run("first call")
+    action = session.approval_queue.pending_actions.first
+    session.approval_queue.approve(action.id, scope: :session)
+    assert_empty session.approval_queue.pending_actions
+
+    decision = session.instance_variable_get(:@approval_policy).before_tool_call(
+      stub_tool_call(id: "call_2", name: "email")
+    )
+    assert_equal :proceed, decision[:action]
+    assert_empty session.approval_queue.pending_actions
+  end
+
+  def test_once_and_project_approvals_do_not_create_session_grants
+    %i[once project].each do |scope|
+      chat = build_chat_stub(sequence: [
+        { tool_calls: { "call_1" => stub_tool_call(name: "email", arguments: '{"to":"x@y.com","body":"hi"}') } },
+        { content: "done" }
+      ])
+      Ask::Agent::Chat.stubs(:new).returns(chat)
+      session = Ask::Agent::Session.new(
+        model: "gpt-4o", tools: [EmailTool.new], approval: { auto_approve: {} }
+      )
+      session.run("Send an email")
+      action = session.approval_queue.pending_actions.first
+      session.approval_queue.approve(action.id, scope: scope)
+      refute session.session_grants.granted?("email"), "#{scope} must not create a session grant"
+    end
+  end
 end

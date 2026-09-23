@@ -97,7 +97,8 @@ module Ask
         restore_persisted_approvals(
           agent,
           payload[:approvals] || payload["approvals"],
-          payload[:plan_approvals] || payload["plan_approvals"]
+          payload[:plan_approvals] || payload["plan_approvals"],
+          payload[:session_grants] || payload["session_grants"]
         )
 
         new(agent: agent, host: host, session_id: session_id, create: false)
@@ -250,7 +251,8 @@ module Ask
           # — nothing durable to persist, so nothing to strand). Snapshot
           # failures raise SessionAdapter::Error with queue context.
           approvals: self.class.queue_snapshot_for(@agent, :approval_queue),
-          plan_approvals: self.class.queue_snapshot_for(@agent, :plan_queue)
+          plan_approvals: self.class.queue_snapshot_for(@agent, :plan_queue),
+          session_grants: self.class.grants_snapshot_for(@agent)
         }
       end
 
@@ -268,6 +270,14 @@ module Ask
         end
       end
 
+      def self.grants_snapshot_for(agent)
+        return nil unless agent.respond_to?(:session_grants)
+        grants = agent.public_send(:session_grants)
+        grants&.respond_to?(:snapshot) ? grants.snapshot : nil
+      rescue StandardError => e
+        raise Error, "Failed to snapshot session grants (#{grants.class}): #{e.class}: #{e.message}"
+      end
+
       # Restore persisted queue snapshots into the agent without firing
       # callbacks or emitting approval-required events. For real Sessions
       # this delegates to the session's silent restore (which also rebuilds
@@ -282,14 +292,35 @@ module Ask
       # target queue, or a restore_pending failure — raises
       # SessionAdapter::Error (or Ask::Agent::Error from the session
       # delegate) with queue context instead of silently dropping actions.
-      def self.restore_persisted_approvals(agent, approvals_snapshot, plan_snapshot)
+      def self.restore_persisted_approvals(agent, approvals_snapshot, plan_snapshot, grants_snapshot = nil)
         if agent.respond_to?(:restore_persisted_approvals, true)
-          agent.send(:restore_persisted_approvals, approvals_snapshot, plan_snapshot)
+          agent.send(:restore_persisted_approvals, approvals_snapshot, plan_snapshot, grants_snapshot)
           return
         end
 
         { approval_queue: approvals_snapshot, plan_queue: plan_snapshot }.each do |queue_name, snapshot|
           restore_into_generic_queue(agent, queue_name, snapshot)
+        end
+        return if grants_snapshot.nil?
+
+        unless grants_snapshot.is_a?(Hash)
+          raise Error, "Cannot restore session grants: snapshot must be a Hash, got #{grants_snapshot.class}"
+        end
+        tools = grants_snapshot[:granted_tools] || grants_snapshot["granted_tools"]
+        unless tools.is_a?(Array) && tools.all? { |tool| tool.is_a?(String) && !tool.empty? }
+          raise Error, "Cannot restore session grants: granted_tools must be an Array of non-empty Strings"
+        end
+        return if tools.empty?
+        unless agent.respond_to?(:session_grants)
+          raise Error, "Cannot restore session grants: agent has no session grants surface"
+        end
+
+        grants = agent.public_send(:session_grants)
+        raise Error, "Cannot restore session grants: agent has no grants store" unless grants
+        begin
+          grants.restore_snapshot(grants_snapshot)
+        rescue StandardError => e
+          raise Error, "Cannot restore session grants: #{e.class}: #{e.message}"
         end
       end
 
