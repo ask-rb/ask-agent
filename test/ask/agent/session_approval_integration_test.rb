@@ -35,6 +35,22 @@ class SessionApprovalIntegrationTest < Minitest::Test
     end
   end
 
+  class ToolGrantStore
+    attr_reader :tools
+
+    def initialize
+      @tools = []
+    end
+
+    def grant(tool_name)
+      @tools << tool_name.to_s unless @tools.include?(tool_name.to_s)
+    end
+
+    def granted?(tool_name)
+      @tools.include?(tool_name.to_s)
+    end
+  end
+
   def build_chat_stub(sequence: [])
     chat = stub(
       model: "gpt-4o",
@@ -472,5 +488,25 @@ class SessionApprovalIntegrationTest < Minitest::Test
       session.approval_queue.approve(action.id, scope: scope)
       refute session.session_grants.granted?("email"), "#{scope} must not create a session grant"
     end
+  end
+
+  def test_project_scope_approval_grants_through_host_owned_collaborator
+    project_grants = ToolGrantStore.new
+    chat = build_chat_stub(sequence: [
+      { tool_calls: { "call_1" => stub_tool_call(name: "email") } }
+    ])
+    Ask::Agent::Chat.stubs(:new).returns(chat)
+    session = Ask::Agent::Session.new(
+      model: "gpt-4o", tools: [EmailTool.new],
+      approval: { auto_approve: {}, project_grants: project_grants }
+    )
+    session.run("Send an email")
+    action = session.approval_queue.pending_actions.first
+
+    session.approval_queue.approve(action.id, scope: :project)
+
+    assert project_grants.granted?("email")
+    assert_same project_grants, session.approval_policy.project_grants
+    refute session.session_grants.granted?("email")
   end
 end

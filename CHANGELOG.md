@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+- Approval decisions can now be granted for the current project through a
+  host-provided `project_grants` collaborator; hosts own its persistence and
+  project identity. Ask App Server supplies a workspace-scoped implementation.
+
 ### Added
 
 - Applying approval with `scope: :session` grants that tool for the session;

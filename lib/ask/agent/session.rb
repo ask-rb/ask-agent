@@ -91,6 +91,7 @@ module Ask
         @agent_dir = agent_dir
         @provided_session_grants = session_grants
         @session_grants = nil
+        @project_grants = nil
         @approval_policy = nil
         @max_turns = max_turns
         @max_tool_retries = max_tool_retries
@@ -947,12 +948,16 @@ end
           raise ArgumentError, "session_grants must be an Ask::Permissions::SessionPermissionGrants, got #{custom_grants.class}"
         end
         @session_grants = custom_grants || Ask::Permissions::SessionPermissionGrants.new
+        @project_grants = policy_opts[:project_grants]
+        if @project_grants && !(%i[grant granted?].all? { |method| @project_grants.respond_to?(method) })
+          raise ArgumentError, "project_grants must respond to grant and granted?"
+        end
 
         # Preserve a custom queue callback, but grant session scope before it
         # executes. If no callback is supplied, keep the default executor.
         previous_approve = queue.on_approve
         queue.on_approve = lambda do |action|
-          grant_session_scope(action)
+          apply_approval_scope(action)
           previous_approve ? previous_approve.call(action) : apply_approved_action(action)
         end
         queue.on_reject ||= ->(action) { reject_pending_action(action) }
@@ -974,7 +979,8 @@ end
           require_approval: policy_opts[:require_approval],
           rules: policy_opts[:rules],
           tools: @tools,
-          session_grants: @session_grants
+          session_grants: @session_grants,
+          project_grants: @project_grants
         )
         @approval_policy = policy
 
@@ -1026,11 +1032,15 @@ end
         end
       end
 
-      def grant_session_scope(action)
-        return unless action.respond_to?(:resolution_scope) && action.resolution_scope == :session
-        return unless action.tool_name && @session_grants
+      def apply_approval_scope(action)
+        return unless action.respond_to?(:resolution_scope) && action.tool_name
 
-        @session_grants.grant(action.tool_name.to_s)
+        case action.resolution_scope
+        when :session
+          @session_grants&.grant(action.tool_name.to_s)
+        when :project
+          @project_grants&.grant(action.tool_name.to_s)
+        end
       end
 
       # Notify the conversation that an action was rejected by the user.
