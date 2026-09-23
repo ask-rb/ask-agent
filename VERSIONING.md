@@ -35,6 +35,21 @@ numbers are never reused or decremented.
 - Once a version is on RubyGems it is immutable: any further change takes
   the next patch number.
 
+### Patch digits range 0 through 9
+
+Each digit of `MAJOR.MINOR.PATCH` ranges only from `0` to `9`. The patch
+digit is a single digit: after `9` the next release rolls the minor digit
+up by one and resets patch to `0` — `0.40.9` → `0.41.0`, never `0.40.10`.
+
+### One-time bridge: 0.40.30 → 0.41.0
+
+This repository already has `0.40.30` published (2026-09-23), a patch
+number with two digits that the single-digit rule does not allow. Do not
+rewrite it: `0.40.30` is immutable on RubyGems and its changelog heading
+stays as-is. The next release must be `0.41.0`. This is a one-time bridge
+to bring the patch line back under the single-digit rule — it does not
+change the rule itself.
+
 ## Releases go through gemchain
 
 Every `ask-*` gem — ask-agent included — and `yamine` is released through

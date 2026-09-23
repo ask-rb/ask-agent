@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.40.30] — 2026-09-23
+
 ### Added
 
 - **`Session#run(runtime_event_sink:)` forwards ask-runtime tool lifecycle events** through the agent loop and recursive turns to `ToolExecutor#execute_batch`.
